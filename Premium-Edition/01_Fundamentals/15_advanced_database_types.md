@@ -81,3 +81,14 @@ A server pinging its health every second generates 31 Million rows a year. 10,00
 *   **Write-Optimized (LSM Trees):** They expect a relentless firehose of `INSERT`s, but almost zero `UPDATE`s or `DELETE`s. (You don't rewrite history for a temperature sensor).
 *   **Columnar Compression:** Since the data shape is identical (e.g., `[Timestamp, MetricName, FloatValue]`), TSDBs use extreme Delta-of-Delta compression. Instead of saving `Timestamp 10:00:01`, `10:00:02`, `10:00:03` (which takes 8 bytes each), it just saves `10:00:01` and the delta `+1`, `+1`, compressing the data footprint by 95%.
 *   **Automatic Downsampling:** To save disk space, TSDBs automatically compress old data. (e.g., Keep 1-second resolution for 7 days, then automatically average it into 1-minute resolution blocks for historical storage).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "In a Graph Database (like Neo4j), how is checking 'Friends of Friends of Friends' exponentially faster than a traditional SQL Database?"**
+*Answer:* In SQL, relational links are evaluated at query time. To find connections 3 levels deep, SQL must perform 3 massive index scans and `JOIN` tables together, which is mathematically $O(N \log N)$ or worse, scanning millions of unrelated rows.
+Graph Databases use **Index-Free Adjacency**. When a node ('Alice') is saved, physical pointers directly to her friends ('Bob') are saved in her disk block. Traversing to Bob is an $O(1)$ memory pointer hop. Traversing the graph is purely a localized memory jump, making depth-first queries on billions of nodes millisecond-fast.
+
+**Q: "When would you choose a Wide-Column Store (Cassandra) over a Key-Value Store (DynamoDB)?"**
+*Answer:* DynamoDB is phenomenal for simple `Get(Key) -> Blob` access. However, Cassandra's Wide-Column structure intrinsically sorts data on disk via a "Clustering Key". If you are designing a Time-Series log (e.g., IoT Temperature sensors) and need to query `SELECT * FROM temperature WHERE sensor_id = 5 AND time > X AND time < Y`, Cassandra's on-disk clustering allows it to sweep that exact sequential disk block instantly. A pure Key-Value store would force you to read massive scattered blobs and parse them manually in the application.

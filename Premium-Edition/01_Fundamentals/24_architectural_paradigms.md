@@ -67,3 +67,15 @@ A Service Mesh is a dedicated infrastructure layer (usually deployed in Kubernet
     5. Sends it over the wire to Service B's Proxy, which decrypts it and delivers it locally.
 
 *   *Benefits:* Complete separation of concerns. Developers write pure business logic. Infrastructure Engineers manage the global Service Mesh configuration for security and resilience without touching application code.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If Microservices isolate failures (so one bug doesn't crash the whole app), why do 90% of system crashes in Microservices cascade and take down the entire system anyway?"**
+*Answer:* **Synchronous Tight Coupling.** If Service A calls Service B via a blocking HTTP GET, and B is down, Service A has to wait indefinitely. If 1,000 requests hit Service A, it spawns 1,000 web threads, all of which get blocked waiting for B. Service A physically exhausts its RAM/CPU Threads and crashes. Then the API Gateway crashes because Service A is dead.
+*Fix:* **Asynchronous Messaging (Kafka/RabbitMQ)** where possible, and strict **Circuit Breakers** where synchronization is required. The breaker trips, causing A to instantly fail *without* blocking threads, saving the cascading collapse of A.
+
+**Q: "Event Sourcing is powerful because it records every single change (e.g., Bank Deposits). But if an account was opened 10 years ago, doesn't reading the current balance take forever because it replays 10 years of transactions from sequence 0?"**
+*Answer:* Yes, replaying 1 Million sequenced events per user slows the Read Path to a devastating halt.
+*Solution:* **Event Sourcing + CQRS + Snapshots.** The read-optimized side of CQRS periodically takes a compressed "Snapshot" of the state (e.g., every 100th event, it writes `Balance: $500` to a flat cache row). When querying, the system instantly loads the most recent Snapshot and only logically replays the 2 or 3 tiny events that occurred *after* the snapshot was captured, dropping read latency from 5 seconds back down to $5	ext{ms}$.

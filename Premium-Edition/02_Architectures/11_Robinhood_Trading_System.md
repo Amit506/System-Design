@@ -73,4 +73,13 @@ When Apple stock drops from $\$150$ to $\$149$, you must alert 500,000 algorithm
 *   **Limitation:** Sending 5 Million individual TCP/WebSocket streams from exactly one Matching Engine output will crash the server CPU and flood the outbound network pipe.
 *   **Solution:** **UDP Multicast.** The Matching Engine fires *exactly one* UDP packet containing the price update into the local network switch. The network switch hardware replicates the packet across all downstream subnetworks.
     *   UDP Multicast is incredibly fast, but "fire and forget" (unreliable). If a client drops a packet, it doesn't request a re-transmit; it ignores the missed tick and relies on the Sequence ID to know it missed a split-second quote.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: How do you handle Stock Splits? If someone placed a Limit Order to buy AAPL at $100 yesterday, and today AAPL executes a 4-to-1 split, their order is suddenly mathematically invalid.**
+*Answer:* Stock Splits are heavy corporate actions that typically occur when the market is physically closed (Overnight/Weekends). The Exchange halts all incoming endpoints. A massive Batch Job aggressively sweeps the entire in-memory Order Book, multiplying the quantity of all resting orders by 4, and dividing the limit price constraint by 4. Only after the batch job guarantees $100\%$ completion does the system open for Pre-Market trading.
+
+**Q: Order Cancellations vs Execution race condition. A user clicks "Cancel Order", but the execution engine matched them a microsecond prior. What is the truth?**
+*Answer:* The Matching Engine Sequencer log is the absolute definitive source of truth based on the exact monotonic arrival time. If the `Execution_Match` packet entered the Sequencer before the `Cancel_Request` packet, the matching engine processes the trade, and then processes the cancellation (resulting in a rejection: "Order already executed"). The UI must gracefully handle this by notifying the user that the cancellation was too late due to market volatility.

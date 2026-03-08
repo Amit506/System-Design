@@ -92,4 +92,13 @@ erDiagram
     }
 ```
 *   By clustering the sequence ID, grabbing the "last 50 messages" is a lightning-fast contiguous sequential disk read instead of a scattered index lookup.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: Designing a group chat with 100,000 members (Discord). You cannot do Fan-out on Write for every message. How does it work?**
+*Answer:* Massive group chats use **Fan-out on Read (The Pull Model)**. When someone messages a 100k-member chat, it is not pushed to 100k WebSockets. The message is written to a specialized Cassandra partition for `Channel_123`. The active users who currently possess an open chat view on their screen are subscribed *temporarily* to a specific Kafka Topic or Redis Pub/Sub channel for that channel. The system only pushes to the few thousand actively looking at the screen. Offline users will just do a standard HTTP Pull when they open the app later.
+
+**Q: End-to-End Encryption (E2EE) prevents the server from reading the message. How do you generate "Link Previews" (thumbnails) for URLs sent in the chat?**
+*Answer:* The server *cannot* generate link previews because it can't read the URL. The **Sender's Client** is responsible for creating the preview. The sender's phone physically navigates to the URL, downloads the thumbnail, encrypts the thumbnail alongside the text message, and sends the whole payload to the server.

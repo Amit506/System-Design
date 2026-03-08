@@ -54,3 +54,13 @@ If there is a partition, it chooses Availability. Else, during normal operation,
 
 ### Example: MongoDB (PC/EC)
 If there is a partition, it chooses Consistency. Else, during normal operation, it forces you to wait until the data is written to the master AND replicated to the slaves before returning "Success", trading away Latency to ensure strong Consistency.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If a system is CP (Consistency/Partition Tolerance), does that mean it goes 100% offline if the network partitions?"**
+*Answer:* Not necessarily. In CP systems (like MongoDB or HBase), if the network partitions and a node gets isolated, that specific isolated node refuses to accept Read/Write traffic (to prevent returning stale data). The *isolated* node goes 'offline', but the remaining healthy cluster (if it maintains a quorum of nodes) is still functionally 'Available' and handles requests perfectly. CP means it sacrifices *global* availability of *all* nodes for Consistency.
+
+**Q: "The CAP Theorem says you can only have 2 out of 3. Why did PACELC replace it?"**
+*Answer:* CAP only applies when a network partition (P) actually happens (which is rare). PACELC answers what happens during normal, healthy operations. **E**lse (when there is no Partition), do you choose **L**atency or **C**onsistency? For example, Amazon DynamoDB is PA/EL. Meaning during a partition, it stays Available. During normal operation, it sacrifices Consistency for low Latency.

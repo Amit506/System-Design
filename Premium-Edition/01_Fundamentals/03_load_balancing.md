@@ -68,3 +68,13 @@ If you have one LB, you haven't solved the SPOF problem; you just moved it.
 How do you route a user in Tokyo to an AWS datacenter in Japan, and a user in New York to a datacenter in Virginia?
 *   **DNS Resolution (Route 53):** You configure your DNS to return different IP addresses based on the geographic location of the DNS query.
 *   **Anycast IP:** A network addressing routing methodology where a single IP address is shared by servers in multiple locations. The networking routers inherently send the packet to the strictly topological "closest" datacenter. (Cloudflare relies heavily on this).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "When would standard Round Robin load balancing be a terrible choice?"**
+*Answer:* If requests have vastly different CPU computing costs. If Request A takes $1	ext{ms}$ to process and Request B takes $5	ext{s}$ to process, Round Robin will blindly assign requests equally. Eventually, Server 1 might get unlucky and receive five "Type B" requests in a row, causing it to crash due to CPU exhaustion, while Server 2 sits perfectly idle. You must use **Least Connections** or **Least Response Time** algorithms for asymmetrical workloads.
+
+**Q: "If the Load Balancer determines where traffic goes, what happens if the Load Balancer itself physically dies? Isn't it a Single Point of Failure (SPOF)?"**
+*Answer:* Yes. To fix this, load balancers are strictly deployed in **Active-Passive (or Active-Active) pairs** using a protocol called **VRRP (Virtual Router Redundancy Protocol)**. Both Load Balancers share a single "Floating IP". The Active node constantly sends a heartbeat to the Passive node. If the Active node dies, the Passive node instantly hijacks the Floating IP locally at the network switch level, taking over traffic in milliseconds without DNS changes.

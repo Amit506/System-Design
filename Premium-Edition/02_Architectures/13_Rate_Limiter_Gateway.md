@@ -79,4 +79,13 @@ At 10 Million QPS, even a clustered Redis setup might struggle with sheer connec
 ### B. Distributed Denial of Service (DDoS)
 If an attacker sends 50 Million requests a second, the API Gateway evaluating 50 Million Lua scripts will run out of CPU and crash, bringing the whole site down.
 *   **Solution: Edge Throttling (Cloudflare / AWS Shield).** You cannot solve a Layer 4 DDoS at the Application (Layer 7) Gateway. You must integrate BGP null-routing or rely on a massive CDN edge network (e.g., Cloudflare) to physically swallow the malicious packets before they ever reach your AWS VPC.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: If your hybrid model keeps tokens in Local RAM and syncs to Redis every 5 seconds, how do you prevent users from bypassing the limit by hitting 100 different API gateways sequentially?**
+*Answer:* The Load Balancer uses **Consistent Hashing by IP or API Key**. All requests from Alice's IP address are mathematically forced to land on the *same physical API gateway server* during the session. Therefore, the Local RAM counter works perfectly. If that gateway node dies, Alice is simply routed to another node, which suffers a 1-second delay reaching back to Redis to fetch her true global state.
+
+**Q: Can you Rate Limit by specific HTTP routes rather than just a global user limit? (e.g., `POST /login` gets 5/min, `GET /feed` gets 100/min).**
+*Answer:* Yes, you use composite keys in Redis. Instead of `SET rate_alice 100`, your Lua script builds a key dynamically: `SET rate_alice_POST_login` or `SET rate_alice_GET_feed`. You configure complex YAML hierarchies centrally that push distinct limits per route down to the execution nodes.

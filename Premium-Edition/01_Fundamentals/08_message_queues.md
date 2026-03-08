@@ -59,3 +59,14 @@ If you suggest a Message Queue in an interview, be prepared to answer these ques
     2.  **At-Least-Once:** (Industry Standard). The system guarantees the message forces delivery, but a network blip might cause the worker to process the message twice (Duplicate processing).
         *   *Fix:* Make all Consumer operations **Idempotent**. (e.g., Instead of `UPDATE balance = balance + 10`, use `UPDATE balance = 100 WHERE transaction_id = 99`). Running it twice has the exact same safe result.
     3.  **Exactly-Once:** Incredibly slow. Requires complex distributed transactions (Two-Phase Commits) between Kafka and the target Database to ensure the message was written and the Kafka offset moved simultaneously. Avoid unless building banking ledgers.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "Kafka guarantees 'At-Least-Once' delivery. Therefore, a worker might process a payment message twice. How do you prevent charging a credit card twice?"**
+*Answer:* Message queues alone cannot solve this; the consumer application must be **Idempotent**. The payment message must explicitly contain a unique `Idempotency-Key` (e.g., UUID `payment_abc123`). The worker checks an external database (Redis or Postgres) to see if `payment_abc123` has already been `PROCESSED`. If yes, it safely drops the duplicate message. Idempotency guarantees safety against unpredictable MQ redelivery.
+
+**Q: "RabbitMQ pushes messages. Kafka forces workers to pull (poll) messages. Why did Kafka choose the Pull model, and why is it superior for Big Data?"**
+*Answer:* In a Push model (RabbitMQ), the broker blindly blasts messages at the worker. If the broker is pushing 10,000 msg/sec but the worker can only process 100 msg/sec, the worker crashes from memory overflow. The broker must implement complex "Backpressure" protocols.
+Kafka's **Pull Model** shifts the burden. The worker asks Kafka for batches *only when it is ready*. This allows a slow worker to safely process data at its maximum speed without ever being overwhelmed.

@@ -57,3 +57,13 @@ You must define two critical Service Level Agreements (SLAs) with the business:
 ### Deployment Topologies
 *   **Active-Passive (Pilot Light):** `us-east` takes 100% of traffic. `us-west` has a tiny database replica running, but no expensive compute servers. If `us-east` dies, you spend 30 minutes booting up servers in `us-west`. (High RTO, Cheap).
 *   **Active-Active (Multi-Region):** Both `us-east` and `us-west` serve live customer traffic 50/50 simultaneously. If `us-east` dies, Route53 DNS instantly routes 100% of traffic to `us-west`. (Near-Zero RTO, Extremely Expensive and complex to keep databases synced across continents).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If your system boasts 99.999% (Five Nines) Availability, how much acceptable downtime does that strictly allow per year?"**
+*Answer:* 5.26 Minutes per **Year**. This is an absurdly tight constraint. It means you cannot have human operators manually intervening in an outage. The system *must* be fully self-healing, active-active multi-region, and geographically load-balanced automatically under 30 seconds.
+
+**Q: "How does a 'Bulkhead Pattern' isolate failures differently from a 'Circuit Breaker'?"**
+*Answer:* A Circuit Breaker stops making outbound requests internally if the downstream service is dead, preventing local thread exhaustion. A **Bulkhead** is architectural isolation (named after partitions in a submarine). If the "Payment Microservice" uses the exact same Database Connection Pool as the "Search Microservice", a massive spike in user searches will exhaust the DB pool, causing Payments to instantly fail. A Bulkhead physically enforces separate connection pools, separate hardware limits, or dedicated threads. Even if the Search API crashes violently, the Payment API remains functionally insulated and 100% operational.

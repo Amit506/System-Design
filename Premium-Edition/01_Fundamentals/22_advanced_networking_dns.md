@@ -71,3 +71,13 @@ Anycast completely abandons DNS-level routing and uses the physical BGP infrastr
 *   **How it Works:** You configure 50 load balancers around the world (London, Tokyo, California). You give *all 50 of them the exact identical IP Address* (e.g., `192.168.1.1`).
 *   **The BGP Magic:** When a client in London sends a TCP packet to `192.168.1.1`, the global BGP routers look at the map and say, "There are 50 destinations claiming to be this IP. The closest one physically is in London." The packet is instantly routed to the local datacenter at the speed of light entirely by the hardware switching layer.
 *   *Pros:* Phenomenally fast, highly resilient against DDoS attacks (because the attack traffic is automatically absorbed locally across 50 global datacenters rather than crushing one single IP switch). Used by Cloudflare and Google Search heavily.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If DNS resolves `google.com` to `142.250.190.46`, what happens if that single IP address goes down? Doesn't DNS caching mean users will stubbornly keep hitting a dead IP for hours?"**
+*Answer:* Modern mega-scale companies use **Anycast Routing** combined with **Global Server Load Balancing (GSLB)**. The IP address `142.250.190.46` does not point to a single physical server in a single building. It is an Anycast IP broadcasted simultaneously by hundreds of data centers globally. BGP (Border Gateway Protocol) at the core internet router level mathematically routes the user's packet to the *closest physical data center* announcing that IP. If the Dallas data center burns down, BGP instantly and natively routes the next packet to the Chicago data center announcing the exact same IP, bypassing DNS dependency completely.
+
+**Q: "Why does establishing a secure HTTPS connection significantly delay the "Time to First Byte" (TTFB), especially for mobile users?"**
+*Answer:* **Network RTT (Round Trip Time).** Standard TCP requires a 3-way handshake (1 full round trip). TLS 1.2 requires an additional 2 round trips to negotiate the cryptographic keys. For a user on a 3G mobile network (where 1 round trip takes $200	ext{ms}$), it takes a brutal $600	ext{ms}$ just to establish the connection *before* sending the first byte of actual data. TLS 1.3 reduces this to 1 round trip (or 0-RTT for returning visitors), structurally eliminating extreme mobile latency.

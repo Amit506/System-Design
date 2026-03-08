@@ -89,3 +89,13 @@ Question: We want to cache timelines to speed up read QPS.
 *   **You:** "For storage, 1M uploads * 500MB = 500 TB per day. Or ~180 PB a year. We cannot use a standard SQL database for this; we need highly scalable Blob Storage like Amazon S3 or a custom HDFS cluster."
 
 You just proved in 3 minutes that you understand the architectural reality of YouTube before drawing a single box.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If SSD disk reads are fast (~100 microseconds), why do we obsess over keeping databases in RAM (~100 nanoseconds)? Isn't 100 microseconds fast enough for a human?"**
+*Answer:* A single 100μs read is invisible to a human. However, if rendering a timeline requires a relational database to execute a `JOIN` that scans 10,000 rows, $10,000 	imes 100\mu s = 1.0	ext{ second}$. If it scans in RAM, $10,000 	imes 100	ext{ns} = 1.0	ext{ millisecond}$. Compounding operations make disk speeds the ultimate systemic bottleneck for scale.
+
+**Q: "You calculated that the system requires 50 TB of storage over 5 years. Is 50 TB the absolute physical reality of what you'll buy from AWS?"**
+*Answer:* No, that is strictly the *raw* data requirement. In production, you must account for **Replication Factor** (usually $3x$ for High Availability), which pushes it to 150 TB. Then you must account for **Compaction/Padding Overhead** (NoSQL databases like Cassandra often require 50% free space to run compaction safely), pushing the actual hardware footprint closer to 300 TB.

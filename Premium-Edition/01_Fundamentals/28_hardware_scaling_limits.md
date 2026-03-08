@@ -60,3 +60,14 @@ However, exactly when the 65,535th user connects, the entire server crashes imme
 *   In Unix/Linux, *everything is a file*. Writing to a text file? It's a file descriptor. Opening a TCP Network socket to a user's web browser? It's a file descriptor.
 *   By default, the Linux Kernel has a hardcoded safety limit preventing any single process from opening more than ~1024 or ~65,535 files/sockets simultaneously, regardless of how much RAM or CPU the server has.
 *   *The Fix:* To build massive scaling systems (like WhatsApp holding 2 million websockets per server), the infrastructure team must dive into the Linux Kernel (`sysctl.conf`, `ulimit -n`) to override the hardware OS limits up to extremely high custom thresholds.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If your multi-threaded Java application is receiving 100,000 HTTP requests per second, and your CPU is somehow at 15% utilization, why is the application horribly slow and dropping packets?"**
+*Answer:* **I/O Blocking and Thread Starvation.** The CPU is idle (15%) because every single Java thread is fundamentally "sleeping", waiting for a slow external Database or slow network API call to return a payload over the network. The OS physically hits a limit on the number of open threads (e.g., 10,000 threads). Once the thread pool is exhausted, the 10,001st request sits in the TCP queue and times out, even though the CPU is largely doing absolutely nothing.
+*Fix:* **Asynchronous / Non-Blocking I/O (Node.js / Go / Java Virtual Threads).** Instead of locking an expensive OS thread while waiting for a network hop, the thread is released back to the event loop, multiplexing 1 Million concurrent sockets across a mere 16 physical CPU threads.
+
+**Q: "If the Linux Kernel restricts a single server to 65,535 TCP Ports (Ephemeral Ports), how does a massive Load Balancer handle 1 Million concurrent Websocket connections?"**
+*Answer:* The `65,535` limit applies to outbound connections mapped to a single distinct Destination IP + Port tuple. A Load Balancer receives *Inbound* connections. A TCP connection is uniquely defined by a 4-tuple: `(Source IP, Source Port, Dest IP, Dest Port)`. Because the 1 Million incoming users all have distinct unique `Source IPs` over the world, the Load Balancer can mathematically hold millions of open file descriptors on a single `Dest Port 443`, constrained only by the physical Server RAM (each socket consumes a few kilobytes of RAM).

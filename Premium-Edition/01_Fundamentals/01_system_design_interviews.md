@@ -68,3 +68,13 @@ This is where you earn your senior engineer badge. Look at your HLD and ask, "Wh
 *   **Think Out Loud:** A silent candidate is a failing candidate. Say, "I'm considering SQL vs NoSQL here. Because we need massive read scale and don't care about strict ACID compliance across tables, I'm leaning toward Cassandra."
 *   **Acknowledge Trade-offs:** There are no silver bullets. If you use a cache, you must explicitly state the trade-off: "Caching solves read latency, but introduces the complexity of cache invalidation and data staleness."
 *   **Drive the Conversation:** Don't wait for them to ask you what to do next. Say, "Now that we have the HLD, I'd like to dive into the database sharding strategy. Does that sound good?"
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If your system is perfectly horizontally scalable, why would you ever choose to scale vertically (Scale Up) instead of adding more machines?"**
+*Answer:* Horizontal scaling introduces network latency between nodes, distributed consensus problems (split-brain), and complex data partitioning (Sharding). If the workload is strictly relational (requires massive `JOIN`s) and the total dataset fits comfortably in 1TB of RAM, a single massive AWS instance (Vertical Scaling) handles transactions exponentially faster with zero distributed locking overhead. Vertical scaling is limited by physical hardware limits, but before you hit those limits, it is significantly simpler and faster.
+
+**Q: "How do you test a system's resilience without waiting for an actual outage?"**
+*Answer:* Chaos Engineering (e.g., Netflix Chaos Monkey). You intentionally and randomly terminate production EC2 instances, drop database tables, or inject artificial network latency (`tc qdisc`) during business hours to mathematically prove that the auto-scaling groups and circuit breakers actually work in reality, not just on a whiteboard.

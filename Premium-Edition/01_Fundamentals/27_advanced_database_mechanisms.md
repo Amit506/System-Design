@@ -53,3 +53,14 @@ You never touch the cache in the application code. You let the Database directly
 3.  **The Stream:** As PostgreSQL writes `Row 5 Updated: {name: 'John'}`, Debezium instantly intercepts that binary packet, converts it to JSON, and publishes an `UpdateEvent` onto an Apache Kafka Message Queue topic.
 4.  **The Updater:** A tiny background microservice listens to that Kafka topic. When it sees the JSON event, it updates Redis immediately.
 *   *Benefits:* Perfect, eventual, asynchronous consistency. If the Updater microservice crashes for 3 days, it doesn't matter. When you reboot it, it just reads the backlog off Kafka and the Cache eventually becomes perfectly synchronized with the Database. This is how massive data warehouses (Snowflake) keep 10 Billion rows synced with live production databases.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "What is the 'Phantom Read' anomaly, and how does standard SQL protect against it without destroying concurrency?"**
+*Answer:* Alice queries `SELECT * FROM users WHERE age > 21` and gets 10 results. While she is doing math, Bob maliciously `INSERT`s a new 22-year-old user. If Alice runs the exact same query again, she now gets 11 results. The new row is a "Phantom".
+*Defense:* Strict `SERIALIZABLE` isolation physically locks the entire table or range, completely destroying concurrency (Bob's query freezes). The modern PostgreSQL solution is **MVCC (Multi-Version Concurrency Control)**. When Alice starts her transaction, PostgreSQL takes a mathematical "Snapshot" of the database (`Transaction ID 500`). Even though Bob commits a new physically written row (`Transaction ID 501`), Alice's query is hardcoded to purposefully ignore any row stamped with an ID $> 500$. She experiences perfect isolation without Bob having to wait on a physical table lock.
+
+**Q: "If SSD drives are exponentially faster than mechanical spinning Hard Disks, why do advanced databases (like Kafka or LSM Cassandra) still obsess over 'Sequential Disk Writes'?"**
+*Answer:* Because standard OS Filesystems aggressively cache Sequential I/O into the RAM Page Cache. If you do 1 Million *Random* SSD writes across the drive, the CPU still must negotiate 1 Million disconnected blocks. If you do 1 Million *Sequential* Append-Only writes (like Kafka logs), the Linux Kernel buffers the blocks in perfect RAM contiguous order, and physically writes them to the SSD in massive, highly optimized batched sweeps. Sequential SSD writes can be 5x to 10x faster than Random SSD writes.

@@ -100,4 +100,13 @@ classDiagram
     *   *Mitigation:* Soft vs Hard states. If a ping drops, they fade to yellow "Soft Offline" keeping their lock active for 60s before being cleanly evicted.
 2. **Archival DB Write Thrashing:** We must save route data for billing/legal reasons. But writing 250k rows/sec to disk will destroy Cassandra SSDs.
     *   *Mitigation:* **Write Buffering in memory.** The location service caches GPS points locally, and only performs a batch insert dump to Cassandra once every 30 seconds per driver.
-EOF
+
+
+---
+
+## 7. Frequently Asked Hard Interview Questions
+**Q: A driver is driving 80 MPH on a highway. Their WebSocket connection drops while crossing a tunnel. Who owns the distributed lock for their state, and how is it resolved?**
+*Answer:* The Backend introduces a "Soft Offline" state. When the ping timeout exceeds 5 seconds, the driver is marked `Ghosted` or `Soft Offline` in Redis (using a strict TTL to auto-evict). The matchmaking engine will heavily penalize them in the sorting algorithm but won't delete them instantly. If they reconnect within 30 seconds via a fresh WebSocket, the new socket takes over the session seamlessly.
+
+**Q: Exact Distance vs. Great-Circle Distance? If the QuadTree says a driver is physically 2 miles away, but there's a river between them with no bridge, it might take 20 minutes to drive. How do you fix this?**
+*Answer:* The QuadTree simply performs a fast mathematical radius reduction (yielding perhaps 50 nearby drivers). Then, a dedicated **Routing/ETA Service** (relying on Graph traversal algorithms or pre-computed road networks like OSRM/Google Maps API) analyzes those 50 drivers to calculate precise road-network drive times. The user is matched based on minimal *Time*, not minimal geographical distance.

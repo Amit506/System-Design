@@ -72,3 +72,14 @@ During an interview, narrate your thought process:
     *   Yes ➡️ **NoSQL Key-Value Cache (Redis).**
 5.  **Are you building a recommendation engine or social network graph?**
     *   Yes ➡️ **NoSQL Graph (Neo4j).**
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "Most NoSQL databases (like Cassandra) are 'Eventually Consistent'. If Alice updates her password from 'apple' to 'banana', and 1 millisecond later tries to login, what happens?"**
+*Answer:* She might be denied access. In Eventual Consistency, the write went to Node A. Her subsequent read hits Node B, which has not yet synchronized with Node A. Node B still thinks her password is 'apple'. 
+*Solution:* For critical fields like Passwords or Financial Balances, you cannot use Eventual Consistency. You must tune the database to use **Strong Consistency (Quorum Reads)**. E.g., instructing Cassandra to not return a value unless $51\%$ of the nodes agree on the data, inherently slowing the response time but guaranteeing absolute mathematical accuracy.
+
+**Q: "Can't I just use a JSON-column in PostgreSQL to get 'NoSQL' flexibility while keeping SQL ACID guarantees?"**
+*Answer:* Yes, Postgres `JSONB` columns are incredibly powerful. However, the bottleneck of SQL is not just the Schema rigidity. The physical bottleneck is **Horizontal Scaling (Sharding)**. Postgres is highly structured for single-node vertical scaling. If your JSON data balloons to 50 Terabytes spanning 10 servers, Postgres lacks native multi-leader automatic sharding architectures. NoSQL databases (like DynamoDB) were built specifically to distribute massive key-value blob data safely across 100s of physical machines seamlessly.

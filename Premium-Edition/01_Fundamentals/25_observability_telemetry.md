@@ -80,3 +80,13 @@ sequenceDiagram
 3.  **Spans:** Each service records exactly when it received the request and when it finished processing it (a "Span").
 4.  **Reporting:** Each service asynchronously sends its Span data (containing the shared Trace ID) to a central Jaeger or Zipkin server.
 5.  **The Result:** The Jaeger UI pieces all the Spans back together into a visual Gantt chart. You can vividly see: *"The Gateway took 500ms entirely because the internal BillingSvc took 400ms to execute a slow SQL query."* This reveals exactly *where* the latency lives.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If you have 1,000 microservices processing 50,000 requests per second, logging everything will cost millions of dollars in Datadog/Splunk bills and crash your disk I/O. What is the standard industry workaround?"**
+*Answer:* **Dynamic Sampling / Tail-Based Sampling**. You do not log every request. You log $1\%$ of `HTTP 200 OK` transactions. However, if a request results in an `HTTP 500 Error`, or if the latency takes $> 2	ext{ seconds}$, the system overrides the sample rate and guarantees that $100\%$ of those pathological traces are permanently logged. This captures $100\%$ of the critical bugs while slashing the logging bandwidth bill by $99\%$.
+
+**Q: "How do you trace an error back to its source if a single API call cascades through 15 different microservices (A -> B -> C... -> O) before failing at Service O?"**
+*Answer:* **Distributed Tracing (OpenTelemetry / Jaeger / Zipkin).** The very first service (API Gateway) injects a unique cryptographically random string (the `X-Correlation-ID` or `Trace-ID`) into the HTTP Header. Every single downstream microservice strictly forwards this exact header into its outbound requests and attaches the ID to its log statements. When an error fires at Service O, you search Datadog for that single `Correlation-ID`, giving you the exact unified chronological stack trace of all 15 services interacting.

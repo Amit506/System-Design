@@ -74,3 +74,13 @@ Building a collaborative text editor like Google Docs or Figma is notoriously ha
 **Solution: CRDTs**
 CRDTs are complex mathematical data structures designed from the ground up to be replicated across massive networks and updated independently, concurrently, and continuously without any central coordination server. 
 *   *The Guarantee:* Regardless of network lag, dropped packets, or the order in which edits arrive, eventually all users viewing the CRDT will converge on the exact identical document state mathematically. No Vector Clock conflict resolution required.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "In a Raft Consensus cluster of 5 nodes, if 2 nodes are physically severed by a network partition, can they elect a new leader and fork the cluster (Split-Brain)?"**
+*Answer:* No. Raft strictly requires a **Quorum (Majority)** to elect a leader or commit a log. The isolated 2 nodes realize they cannot reach the required 3 votes ($50\% + 1$). They will endlessly run failed election loops and refuse all write traffic. The other side of the partition (the 3 healthy nodes) maintains the quorum, keeps their leader, and accepts writes seamlessly. The system physically prevents a Split-Brain reality.
+
+**Q: "Vector Clocks resolve data conflicts, but how can they spiral out of control and crash the system memory?"**
+*Answer:* A Vector Clock is a dictionary of Node IDs and sequence numbers `[NodeA: 5, NodeB: 2]`. In a massive microservices architecture (like Amazon's early Dynamo DB), if you dynamically spin up and destroy millions of ephemeral Auto-Scaling instances or mobile clients over a year, the Vector Clock payload grows infinitely wide `[NodeA: 5, NodeB: 2, NodeZ_from_last_year: 1...]`. The metadata payload eventually becomes larger than the actual data. You must implement a strict truncation/pruning logic to cap the size of the clock history.

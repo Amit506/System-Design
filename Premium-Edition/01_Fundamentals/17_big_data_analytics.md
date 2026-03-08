@@ -65,3 +65,15 @@ The successor to MapReduce.
 *   **The Magic (In-Memory Processing):** Spark keeps the massive distributed datasets entirely in RAM (Memory) across the cluster, rather than writing to disk.
 *   It is up to 100x faster than Hadoop MapReduce for complex Machine Learning training or iterative data analytics.
 *   **Streaming vs. Batch:** While traditional data systems run "Batch Jobs" (processing yesterday's data every night at 2 AM), tools like Spark Streaming or Apache Flink can ingest endless streams of data from Kafka, analyze it continuously in real-time, and detect anomalies instantly.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "Hadoop MapReduce was the industry standard for a decade. Why did everyone abandon it for Apache Spark?"**
+*Answer:* MapReduce was explicitly designed for disk-bound batch processing. After the "Map" phase, it writes the intermediate data securely back to the physical Hard Drive, and then the "Reduce" phase reads it back from the Hard Drive. This constant Disk I/O makes it incredibly slow.
+Apache Spark is an **In-Memory** data engine. It passes the intermediate Map and Reduce states mathematically through RAM as Distributed Resilient Datasets (RDDs), operating 100x faster than Hadoop for iterative ML algorithms, while only falling back to disk if RAM is physically exhausted.
+
+**Q: "What is the 'Lambda Architecture' and why does it require you to maintain two completely separate codebases?"**
+*Answer:* Lambda merges Batch Processing (Hadoop - slow, perfect accuracy) with Stream Processing (Flink - fast, approximate accuracy). A user clicks an ad. Flink updates the real-time "Today's Ad Clicks" dashboard in $<1	ext{s}$ (Speed Layer). Simultaneously, the raw event is dropped into S3. Tonight at 2:00 AM, Hadoop processes all raw files and calculates the flawless historical truth (Batch Layer). 
+*The Flaw:* Because Streaming and Batch require totally different APIs, developers had to write the aggregation logic twice. This is why the industry shifted to the **Kappa Architecture** (using Flink/Kafka for *everything*).

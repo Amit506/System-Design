@@ -87,4 +87,13 @@ When a user closes their laptop lid, the WebSocket doesn't explicitly send a "Di
 If a document is 500 pages long (e.g., a 10MB JSON OT blob), when Charlie joins the session, he cannot wait 30 seconds to download the entire operation history from the server.
 *   **Limitation:** Replaying 1 Million keystrokes to establish the current state.
 *   **Mitigation:** **State Snapshots.** The server periodically creates compressed snapshots of the finalized text every 5 seconds and saves them to Amazon S3. When Charlie connects, he instantly fetches the most recent snapshot from the CDN ($>99\%$ caught up), and the Session Server only streams him the operations that occurred in the last few seconds to fill the gap.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: How does the "Undo/Redo" stack work mathematically with CRDTs when 5 people are editing? If Alice clicks "Undo", whose action is undone?**
+*Answer:* In a collaborative environment, the concept of a "Global Undo" is chaotic. If Alice types A, Bob types B, and Alice hits Undo, we only want to undo Alice's "A", leaving "B" intact. Every operation tracked in the CRDT carries an `Author_ID`. Alice's local machine maintains her *Personal Undo Stack*. When she hits Undo, she is physically issuing an entirely new CRDT operation: `Delete(Author: Alice, Action: 12)`. The CRDT mathematically nullifies her previous action without disrupting Bob.
+
+**Q: A user edits a document aggressively on an airplane with no WiFi. They connect 10 hours later. What happens?**
+*Answer:* The local browser caches all hundreds of CRDT operations systematically in IndexedDB. Because CRDT fractional indices do not rely on a strictly sequenced central server state, when the user connects, their client blasts the batch of 500 queued operations to the central server. The server instantly resolves them because the fractional positional logic mathematically merges perfectly (Commutative Property) regardless of how old the offline time-gap was.

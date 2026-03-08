@@ -67,4 +67,13 @@ If Alice asks a short question, her inference occupies an $A100$ GPU for 1 secon
 If a user pastes a 1,000-page PDF into the chat box, it exceeds the strict model context limit (e.g., $128\text{K}$ tokens).
 *   **Limitation:** The LLM cannot physically ingest the whole book.
 *   **Solution: Retrieval-Augmented Generation (RAG).** The architecture parses the PDF natively, chunks the text, passes it through an Embedding Model to vectorize it mathematically, and stores it in a **Vector Database** (Pinecone / Milvus). When the user asks "What happened in Chapter 4?", the system does an Approximate Nearest Neighbor (ANN) search in the Vector DB, pulls only Chapter 4 into the prompt, and sends it to the GPU.
-EOF
+
+
+---
+
+## 5. Frequently Asked Hard Interview Questions
+**Q: How do you defend against "Prompt Injections" (where a user tries to trick the AI into ignoring system instructions and printing passwords/keys)?**
+*Answer:* System prompts and Guardrails are structurally segregated. In production, we deploy **LLM Firewalls / Evaluators**. The prompt doesn't just go to the primary generator. It first passes through a smaller, incredibly fast secondary LLM (e.g., LLaMA 8B) explicitly trained strictly to classify malicious injections. Only if the classifier approves it, does it route to the massively expensive primary model (GPT-4) for evaluation. The output is additionally sanitized before reaching the user.
+
+**Q: Image/Multi-Modal inputs are massive. How are vectors managed across the context window when a user uploads 10 large images?**
+*Answer:* Images are not fed in as raw pixels. They are passed through a Vision Encoder (CLIP or ViT) which mathematically compresses the image into an Embedding Vector (a sequence of dense tokens). A high-res image might consume $1,000$ tokens of context window. The API Gateway strictly bounds image sizes, and the orchestrator dynamically downsizes the resolution if the conversation history is nearing the physical $128	ext{K}$ limit to preserve token bandwidth for the actual textual reasoning.

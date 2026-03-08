@@ -57,3 +57,13 @@ The CDN edge server pulls new content only when the first user requests it (a Ca
 You (the engineer) actively push content to the CDN edge servers BEFORE users request it. Whenever you update a file, your deployment pipeline runs a script to actively push the file out to 150 global edge locations.
 *   *Pros:* The very first user experiences zero latency (100% Cache Hit rate).
 *   *Cons:* Very complex to orchestrate. High bandwidth costs pushing terabytes of data to regions that might never actually request that specific file.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "A user in Tokyo requests a 10MB Video from your New York Origin Server. The CDN Edge in Tokyo doesn't have it (Cache Miss). The Edge requests it from NY. If 5,000 people in Tokyo ask for it simultaneously, won't the CDN Edge send 5,000 requests to NY, destroying your origin server?"**
+*Answer:* No. Modern CDNs (like Cloudflare or Akamai) implement **Request Collapsing (Read-Through Caching)**. The Edge node recognizes that it is currently fetching the asset from Origin for User 1. It holds Users 2-5,000 in a wait state for a few milliseconds, finishes downloading the single payload from New York, and then physically distributes it to all 5,000 users simultaneously.
+
+**Q: "If a Reverse Proxy (like NGINX) decrypts SSL traffic to inspect the HTTP headers, doesn't that make the connection between the Proxy and the Internal Application Server totally insecure (Plaintext HTTP)?"**
+*Answer:* Yes, this is called **SSL Termination**. If the Proxy and the App Server are in the same private VPC subnet (like AWS Virtual Private Cloud), it's generally considered safe since the traffic is completely isolated from the internet. However, for ultra-high security systems (Banking/Gov), you must use **SSL Passthrough** (where the proxy routes raw TCP packets without seeing the data) or re-encrypt the traffic internally (**mTLS - Mutual TLS**) so traffic remains heavily encrypted even between your own internal servers.

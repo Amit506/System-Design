@@ -102,3 +102,13 @@ When a celebrity gets 10,000 follows a second, putting a `COUNT(*)` query or row
 ### C. CDN Integration for Media
 If every image load goes through our API servers, our bandwidth costs will bankrupt us.
 *   **Mitigation:** Store the raw media on Amazon S3 and cache it geographically using a CDN (Cloudflare/Akamai). The API only returns the presigned CDN URL in the JSON payload.
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: What happens if a celebrity deletes a tweet from 5 years ago? Do you have to scan and remove it from 100 Million Redis timelines?**
+*Answer:* Scanning 100 Million Redis lists is physically impossible. This is why the timeline Redis `ZSET` only stores the `tweet_id`. When a user loads their feed, the API takes those 20 `tweet_id`s and does a bulk fetch from the primary DB (or a separate tweet content cache). When the Tweet is deleted, it is removed from the *primary DB*. The `tweet_id` remains in the users' Redis feed safely, but when the API attempts the bulk fetch, it returns `null` for that specific ID, and the API simply filters it out before sending the JSON to the mobile app.
+
+**Q: How do you handle "Muted Words" or "Blocked Users" efficiently without slowing down feed generation?**
+*Answer:* Filtering cannot happen when writing to the Fan-out queue, because a user can update their muted words at any time. It must happen closely at read time. The API Gateway queries a highly optimized Bloom Filter or local cache of the user's "Blocked IDs" and "Muted Hashes" during the final Timeline Merge step, silently dropping offending `tweet_id`s before transmission.

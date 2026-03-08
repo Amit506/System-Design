@@ -65,3 +65,13 @@ Every Pod gets its own IP address. But because Pods are mortal (they die and get
 The ultimate magic of Kubernetes. You can configure K8s to watch the CPU usage of your pods.
 *   *Rule:* "If average CPU utilization across my LoginService pods hits 70%, automatically add 10 more pods. If it drops below 30%, kill off 10 pods."
 *   This ensures your system scales automatically to handle viral spikes without manual intervention, saving immense cloud costs during off-peak hours.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If a Kubernetes Pod crashes, the ReplicaSet brings a new one online. However, what happens to the active user's HTTP request that was being processed during the crash?"**
+*Answer:* The request physical dies (HTTP 502/504). Kubernetes handles Infrastructure orchestration, not Application-level transaction retry states. The client (or API Gateway Envoy proxy) must implement **Idiomatic Retries** (with Exponential Backoff) to re-issue the request to the newly spawned pod.
+
+**Q: "How does the 'Sidecar Pattern' (Service Mesh / Istio) physically intercept and alter microservice traffic?"**
+*Answer:* When you deploy `AppA` to a Kubernetes Pod, Istio injects a completely separate proxy container (Envoy) into the *exact same Pod namespace*. It modifies the low-level `iptables` of the Linux kernel inside that Pod. When `AppA` attempts an outward HTTP request, the kernel transparently steals the packet and routes it into the Sidecar proxy. The Sidecar encrypts it (mTLS), adds tracing headers, rate limits it, and then physically sends it over the wider network to `AppB`'s sidecar. The internal app is completely oblivious to the network complexity.

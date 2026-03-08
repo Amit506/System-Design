@@ -86,4 +86,13 @@ A worker pulls an email task from the queue, crashes halfway through rendering t
 ### C. Poison Pill Tasks
 If a task payload is corrupted (e.g., invalid JSON), it will crash Worker A. The MQ will redeliver it to Worker B, crashing B, and so on until the entire worker fleet is destroyed.
 *   **Mitigation:** **Max Retries Threshold.** After 3 successive failures, the MQ routes the task strictly to the Dead Letter Queue for human engineering inspection, preventing infinite crash loops.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: What happens if a job takes 5 hours to execute, and during that 5 hours, the server is restarted during routine maintenance? Does the job fail completely?**
+*Answer:* **Heartbeats and Checkpointing.** A healthy worker does not stay entirely silent for 5 hours. It sends an HTTP Ping (Heartbeat) to the MQ every minute. If the server dies, the heartbeats stop, and the MQ instantly releases the task to another node. To prevent starting the 5-hour task from `Time=0`, the application logic must perform **Checkpoints**. It constantly writes its processing state (e.g., "Processed row 50,000") to a shared database. The new replacement worker queries the Checkpoint DB and resumes directly from row 50,001.
+
+**Q: Handling massive timezone and Daylight Saving Time (DST) shifts. A job is scheduled for 2:30 AM, but DST causes the clocks to jump from 2:00 AM straight to 3:00 AM. Does the job disappear?**
+*Answer:* The underlying physical database and Redis scheduling ZSETs **strictly operate on UTC Unix Epoch Time**, which represents absolute physical seconds irrespective of earth bound rules. Timezones and DST are strictly a User Interface (Frontend) presentation layer logic problem. When the user sets "2:30 AM EST", the API immediately converts it to universal UTC Epoch ticks before ingestion. The Time Wheel executes perfectly.

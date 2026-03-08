@@ -64,3 +64,14 @@ A Bloom Filter is a probabilistic, incredibly memory-efficient data structure (u
 *   **If it says "Yes",** it means the data *probably* exists. The DB then spends the time to open the file and look.
 
 When designing a web crawler or a massive NoSQL database, always mention Bloom Filters to prevent expensive, useless disk seeks.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If adding an Index makes `SELECT` queries lightning fast, why don't we just index every single column in the database table?"**
+*Answer:* An Index is not a magical property; it is a physical data structure (usually a B-Tree) stored on disk. Every time you `INSERT`, `UPDATE`, or `DELETE` a row, the database must rewrite and re-balance *every single index tree*. If you have 20 indexes on a table, a single `INSERT` involves 20 heavy disk writes. Over-indexing makes Write performance catastrophically slow and consumes massive amounts of RAM/Disk space.
+
+**Q: "What is the difference between an LSM-Tree (Log-Structured Merge Tree) and a B-Tree, and when would you use an LSM-Tree?"**
+*Answer:* **B-Trees** (PostgreSQL/MySQL) update data "in-place", meaning they overwrite existing disk blocks. This is great for reads but slow for millions of random writes because of disk seeks. 
+**LSM-Trees** (Cassandra/RocksDB) are *Append-Only*. They never immediately modify existing data on disk; they just write changes to memory, then flush continuously as immutable new files, merging them later in the background. LSM-Trees are mathematically superior for **Extreme Write-Heavy workloads** (e.g., IoT Telemetry, Logging) where B-Trees would choke.

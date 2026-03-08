@@ -92,4 +92,13 @@ If Netflix waits for people to click "Play" to load the cache, the first users e
 ### C. Big Data Analytics Storage
 We must track where users pause, rewind, or abandon a video to train the recommendation engine.
 *   **Mitigation:** The client fires small `/metrics` JSON payloads every 10 seconds. These are sunk into a massive Kafka cluster, aggregated by Apache Flink, and dumped into a Data Lake (HDFS/S3) for offline Hadoop/Spark ML processing.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: A video is uploaded containing copyrighted audio. How do you halt the massive distributed DAG transcoding pipeline mid-process?**
+*Answer:* The pipeline isn't just one flow; it is event-driven. The first initial step before deep transcoding is a fast Audio Fingerprinting check (Digital Rights Management). This runs a hash against an external database. If a match is found, the Director Node sends a `CANCEL` broadcast event to the Kafka topic. Worker nodes constantly check for the `cancel_flag` in Redis correlated to the `job_id` before processing subsequent chunks, dropping the tasks immediately.
+
+**Q: Live Streaming vs VOD (Video on Demand). Netflix is VOD, but Twitch is Live. How does the architecture change for Live Video?**
+*Answer:* Live streaming heavily utilizes WebRTC for ingestion (low latency UDP) and avoids writing to S3. Instead of pre-warming edge caches entirely, the system builds an ephemeral memory tree. The streamer sends chunks to an Ingest Server, which instantly pushes them through a memory-based replication tree down to the CDN Edge Nodes (HLS/DASH). Processing is limited to real-time, low-overhead codecs, avoiding deep parallel DAG transformations since you cannot process future frames.

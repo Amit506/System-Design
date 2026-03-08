@@ -89,3 +89,13 @@ How do multiple concurrent API servers pull from the KGS without grabbing the sa
 ### C. Malicious User Rate Limiting
 A user might write a script to generate millions of URLs to exhaust our KGS pool.
 *   **Mitigation:** Implement a Token Bucket Rate Limiter at the API Gateway level using Redis `EXPIRE` counters keyed to the user's `api_dev_key`.
+
+
+---
+
+## 7. Frequently Asked Hard Interview Questions
+**Q: How do you handle custom URL aliases (e.g., `bit.ly/my-custom-link`) if they collide with the Base62 generator?**
+*Answer:* Custom URLs completely bypass the Key Generation Service (KGS). When a user requests a custom alias, the API attempts a standard SQL `INSERT` into the Mapping Database with a `UNIQUE` constraint on the `short_url` column. If it is already taken, it returns an error. The Base62 generator must be configured to never randomly generate dictionary words or specific reserved prefixes to prevent future collisions with premium custom aliases.
+
+**Q: If a URL goes incredibly viral, Redis will face a massive Hot-Key issue on a single shard. How do you prevent that single Redis node from crashing?**
+*Answer:* The API backend must implement **Local In-Memory Caching** (Guava Cache / caffeine in Java). The application server caches the heavily requested URL locally for 5-10 seconds. This avoids the network hop to Redis entirely, shielding the single Redis node from millions of subsequent reads for that specific viral link.

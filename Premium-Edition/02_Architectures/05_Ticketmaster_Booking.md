@@ -105,4 +105,13 @@ When communicating with Stripe, the HTTP request might time out. Did Stripe char
 ### B. Scalable Data Delivery (WebSockets for Seat Maps)
 Users want to see seats changing from blue to grey instantly without refreshing the page.
 *   **Mitigation:** Implement **Server-Sent Events (SSE)**. The client subscribes to a `/stream/event/123` endpoint. When any Redis lock occurs or drops, Kafka pushes an event to a Notification Service, which blasts the state change down to all 50,000 connected browsers via SSE concurrently.
-EOF
+
+
+---
+
+## 7. Frequently Asked Hard Interview Questions
+**Q: Scalpers write automated bots that bypass the UI to hammer the API directly. How do you defend the lock system?**
+*Answer:* The Virtual Waiting Room enforces cryptographic CAPTCHAs (Proof of Work or Cloudflare Turnstile). Furthermore, we use behavioral ML at the Edge. If a specific JWT token requests 5 distinct seats across the stadium in under 500ms, it is mathematically inhuman. The API Gateway instantly revokes their JWT and IP-bans them. Lastly, ticket transfers are disabled, pinning the ticket permanently to the purchaser's ID/Phone number.
+
+**Q: What happens if the Redis node holding the locks crashes physically (power outage) mid-transaction?**
+*Answer:* Redis is purely an optimization layer here. We rely on the concept of **Recovery Reconciliation**. The relational database (Postgres) is the absolute truth. If Redis dies, the locks disappear. A new user might click the same seat that Alice was in the middle of buying. When both of them hit "Pay", they reach Postgres. Postgres has a `UNIQUE` constraint or an explicit pessimistic lock `FOR UPDATE`. Only one transaction commits; the other gets heavily rolled back, and the loser is refunded. It’s an acceptable degradation of UX during hardware failure to maintain $100\%$ transactional consistency.

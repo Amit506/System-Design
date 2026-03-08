@@ -98,4 +98,13 @@ erDiagram
 *Example Ledger Row 2:* `Credit Merchant Wallet: +$48.50`
 *Example Ledger Row 3:* `Credit Stripe Fee Sink: +$1.50`
 *(Sum always equals $0$)*
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: What happens if a user requests a refund of $20, but the original charge was $50? How does the Idempotency System and Ledger handle partial refunds?**
+*Answer:* The Ledger is immutable. We never update the `$50` row. A Refund is a completely brand new Transaction with its own unique `Idempotency-Key` (e.g., `refund_req_333`). The Ledger creates a new row: `Debit Merchant: -$20, Credit User: +$20` linked to the `Original_Transaction_ID` via a Foreign Key constraint. An aggregation view queries `SUM(amount) WHERE parent_id = X` to verify the total refunds never exceed the original `$50`.
+
+**Q: How do you achieve 99.999% availability if the entire AWS us-east-1 region physically goes completely offline?**
+*Answer:* Complete Active-Active Multi-Region redundancy via **CockroachDB / Google Spanner (Distributed SQL)**. Standard Postgres is Active-Passive, meaning cross-region failovers take precious minutes. Using a globally synchronized True-Time database means transactions are written to multiple geographic regions synchronously using the Paxos or Raft consensus algorithms. If a region burns down, the API gateway seamlessly routes to another region where the Ledger is perfectly intact with zero data loss ($RPO = 0$).

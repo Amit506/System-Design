@@ -68,3 +68,14 @@ In microservices, we use **Mutual TLS**:
 3.  Service A demands a cryptographic certificate proving Service B is definitively the Payments service.
 4.  Only when both mathematically verify each other's identity do they open the encrypted channel.
 *   *Benefits:* If a hacker gains remote code execution on the "Images" service, they cannot arbitrarily send requests to the "Payments" service, because the Images service lacks the proper mTLS certificates for financial APIs. (Usually managed automatically by a **Service Mesh** like Istio).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "A standard JWT (JSON Web Token) contains user claims and is cryptographically signed. Since it is stateless, how do you instantly log out a malicious user if the JWT doesn't expire for another 2 hours?"**
+*Answer:* This is the fundamental flaw of perfectly stateless JWTs—they cannot be revoked natively until they expire. 
+*Solution:* The architecture must maintain a global fast-access **Token Revocation List (Blacklist)** in Redis. When the user clicks "Log Out" (or an Admin bans them), the JWT string is placed into Redis with a TTL of 2 hours. Every subsequent API call through the Gateway must do an $O(1)$ Redis check to ensure the token isn't blasklisted. This breaks pure statelessness, but it is necessary for enterprise security.
+
+**Q: "What is OAuth 2.0 PKCE (Proof Key for Code Exchange) and why is it mandatory for Mobile Apps, but not backend web servers?"**
+*Answer:* When building a web app, the backend Node.js Server can securely hold the `Client_Secret` password. A Mobile App running on an iPhone is public code; hackers can decompile the APK/IPA and steal the embedded `Client_Secret`. PKCE solves this by generating a mathematically unique dynamic cryptographic hash challenge on the phone specifically at runtime for a single login flow, replacing the need for a hardcoded permanent static secret.

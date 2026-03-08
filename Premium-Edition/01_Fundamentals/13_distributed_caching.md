@@ -83,3 +83,14 @@ We write the RAM state to a hard drive so we can recover it upon reboot.
     *   *Flaw:* Replaying 1 billion commands on boot takes 20 minutes.
 
 *(Redis uses a combination of both RDB and AOF to achieve maximum speed and safety).*
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "What is 'Cache Penetration' and how is it different from a 'Cache Stampede'?"**
+*Answer:* A Cache Stampede is millions of hits on a valid, popular key that just expired. **Cache Penetration** is an attack where a hacker requests keys that physically *do not exist* in your database (e.g., `user_id=-9999`). The cache always misses, and the request always penetrates to the Database, successfully DDOS-ing the Database with fake queries.
+*Solution:* **Cache Null Values** (store `user_id=-9999 : NULL` with a short TTL) or use a **Bloom Filter** at the API edge to instantly reject requests that mathematically have no chance of existing in the DB.
+
+**Q: "If you have 5 Terabytes of Cache Data, why not just use Memcached instead of Redis?"**
+*Answer:* Memcached is exceptional, perfectly multi-threaded, and purely in-memory. However, it lacks advanced data structures (like Sorted Sets for leaderboards) and lacks Disk Persistence. If a 5TB Memcached cluster reboots, 5TB of data vanishes instantly. Redis offers **RDB/AOF Persistence**, meaning a rebooted Redis node can load its state back from SSD locally before accepting traffic, preventing a massive cold-start Database hit.

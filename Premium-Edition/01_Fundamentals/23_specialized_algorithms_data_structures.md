@@ -70,3 +70,15 @@ A probabilistic data structure used for frequency estimation. It consumes almost
     `Calculated Count = (84 * (1 - 0.25)) + 36`
     `Calculated Count = (84 * 0.75) + 36 = 63 + 36 = 99`.
 5.  *Result:* The user is at 99 requests. They are allowed 1 more. We achieved 99% accuracy of a Sliding Log, using the tiny memory footprint of a Fixed Counter.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "You need to track the number of unique visitors (Unique IP addresses) to Wikipedia over a year. There are 2 Billion unique numbers, and 100 Billion visits. How do you count them without exhausting RAM?"**
+*Answer:* Storing 2 Billion IP strings in an exact `HashSet` consumes around 32 GB of purely active RAM ($2 	ext{Billion} 	imes 16 	ext{Bytes}$). 
+*Solution:* **HyperLogLog (HLL)**. HLL is a probabilistic cardinality estimator. It hashes the incoming IPs and counts the maximum number of consecutive leading zeroes in the binary hash. Using extreme mathematical probability, it can estimate the total number of unique elements across 100 Billion events with $99\%$ accuracy, using an astonishing maximum of only $12 	ext{ Kilobytes}$ of RAM.
+
+**Q: "How does a Trie (Prefix Tree) struggle with 'Fuzzy Search' (e.g., someone typing 'Systm' instead of 'System'), and how is it solved?"**
+*Answer:* A standard Trie specifically requires exact node-by-node path matching. If `e` is missing, the traversal falls off the tree instantly and returns zero autocomplete suggestions.
+*Solution:* **Levenshtein Distance Automata (Edit Distance).** We allow the traversal to branch out recursively on adjacent characters, effectively saying "Find me all prefixes in this Trie that are structurally exactly 1 deletion or 1 substitution away from 'Systm'." This allows autocorrecting the Trie traversal on the fly, although it drastically increases the CPU computational cost compared to exact prefix matching.

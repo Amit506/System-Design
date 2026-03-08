@@ -66,4 +66,13 @@ Tracking clicks and impressions is how advertisers are billed. But the system pr
 Competitors use bots to click on ads (Click-Fraud), costing the advertiser money maliciously.
 *   **Limitation:** Operating complex ML models to detect fraud within the $40\text{ms}$ critical path is impossible.
 *   **Solution:** **Lambda Architecture (Batch + Stream).** Fraud detection happens post-bid. Apache Flink monitors the Kafka click-stream locally. If it detects 100 clicks from the same IP address in 10 seconds, it instantly flags the IP as fraudulent and writes it to a Redis Blacklist. Future bids check the $O(1)$ fast Redis blacklist during the $40\text{ms}$ window to ignore the bot traffic.
-EOF
+
+
+---
+
+## 5. Frequently Asked Hard Interview Questions
+**Q: Data Privacy (GDPR/CCPA). How do you universally "delete" a user's tracking history if that data is spread across Kafka, Druid, and Backups?**
+*Answer:* Hard deleting rows from an append-only time-series OLAP system (Druid) is wildly inefficient. The industry uses **Crypto-Shredding**. The user's tracking ID is encrypted with a specific cryptographic key uniquely assigned to them, housed in a highly secure Key Management Service (KMS). To completely "delete" the user across petabytes of architecture, we don't delete the data streams. We delete their *decryption key* from the single KMS matrix. Instantly, all their data across every database becomes computationally unreadable random noise, fully satisfying GDPR.
+
+**Q: How do you track a user accurately if they switch from their Laptop browser to their Mobile App (Cross-Device Graph)?**
+*Answer:* **Deterministic & Probabilistic Matching.** Deterministic logic links them permanently if they "Login" to a service on both devices (Google/Facebook IDs). Where login fails, a distributed Graph Database analyzes probabilistic edges: "Device A and Device B connect to the exact same home IP WiFi address every evening at 6 PM, and both frequently visit similar obscure web pages." The graph scores the probability and dynamically merges their advertising profile into an overarching `Household_ID`.

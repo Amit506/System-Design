@@ -73,3 +73,15 @@ If you are designing any of the following systems, you MUST mention Consistent H
 1.  **Distributed Caching:** Memcached router clients use Consistent Hashing to find which Redis node holds a specific key.
 2.  **NoSQL Databases:** Amazon DynamoDB and Apache Cassandra use Consistent Hashing (called partitioned ring topology) to orchestrate horizontal scalability without massive data migration downtime.
 3.  **Chat Servers (WhatsApp):** Routing a message to the specific server holding a user's WebSocket connection.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If you use Consistent Hashing across 5 servers, and Server 1 crashes, all of its traffic seamlessly falls onto Server 2. But won't Server 2 instantly crash because its load just doubled?"**
+*Answer:* This is called the "Cascading Failure". To solve this, industry implementations do not map 1 server to 1 point on the ring. We use **Virtual Nodes (vNodes)**. We map Server 1 to 100 different random fictional points scattered evenly around the 360-degree ring. Server 2 gets 100 different points. 
+If physical Server 1 dies, its 100 points disappear, and its traffic distributes *evenly* across the other 4 servers, increasing their load by exactly $25\%$ each, rather than doubling the load on a single unlucky neighbor.
+
+**Q: "How do you add a new caching server to a live Consistent Hashing ring without users noticing a spike in cache misses?"**
+*Answer:* When you add Server 5, it takes ownership of a sector of the ring. However, its memory is empty. If it instantly starts serving requests, every request is a Cache Miss, triggering a Database stampede.
+*Solution:* **Warm up.** Before formally joining the ring routing table, Server 5 sits in "Shadow Mode". It runs a background script to query its neighboring servers, pulling the keys that are about to fall into its jurisdiction, and preloads them into RAM. Once its memory is perfectly warm, it is flipped online to live traffic with zero misses.

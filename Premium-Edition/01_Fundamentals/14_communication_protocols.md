@@ -74,3 +74,13 @@ Developed by Google, this is the gold standard for high-performance internal mic
 *   *How it works:* Instead of sending `{"name": "John", "age": 30}`, Protobuf serializes the data into a deeply compressed binary stream (e.g., `0A 04 4A 6F 68 6E 10 1E`).
 *   *Pros:* Phenomenally fast (up to 10x faster than REST). Strongly typed schemas prevent breaking changes between services.
 *   *Cons:* Not human-readable. You cannot easily `curl` a gRPC endpoint without specialized tools to decode the binary. Rarely used for Client-to-Server interactions directly (usually sits entirely behind the API Gateway).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If gRPC is so much faster and more efficient than REST, why isn't every public API (like Twitter's or Stripe's API) built on gRPC?"**
+*Answer:* gRPC uses HTTP/2 and raw binary serialization (Protobufs). Browsers historically struggled to support raw HTTP/2 framing and binary parsing directly in JavaScript without a proxy. More importantly, Protobufs are human-unreadable. If Stripe sends a developer binary data, the developer cannot easily `curl` it and read the JSON in their terminal to debug. gRPC is the gold standard for **Internal Server-to-Server** microservices, while REST (JSON) remains the standard for **External Client-to-Server** APIs due to extreme developer ergonomics.
+
+**Q: "Both WebSockets and Server-Sent Events (SSE) keep a connection open. When would you strictly use SSE over WebSockets?"**
+*Answer:* WebSockets are Full-Duplex (Bi-directional). SSE is Half-Duplex (Server to Client only). If you are building a financial stock ticker or a ChatGPT text-stream where the client only needs to *listen* to a stream of data and rarely speaks, SSE is vastly superior. SSE works over standard HTTP/1.1 protocols, natively supports corporative firewalls, and handles automatic reconnection implicitly, whereas WebSockets require complex custom handshake and reconnection logic.

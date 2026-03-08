@@ -75,4 +75,13 @@ When the 64GB RAM fills up entirely, what does the server delete to make room fo
 ### C. Write Amplification (Replication Strategy)
 If `Node A` dies permanently, all its keys are gone. 
 *   **Mitigation:** Redis typically uses a Primary-Replica structure. Every Master `Node A` has 2 hidden read-only Replicas. The Master asynchronously copies every write to the replicas using an append-only transaction log. If `Node A` crashes, Redis Sentinel promotes a Replica to Master under 3 seconds.
-EOF
+
+
+---
+
+## 5. Frequently Asked Hard Interview Questions
+**Q: If memory fragmentation occurs within a single Node A, how do you clean it up without stopping the server?**
+*Answer:* In standard Redis, memory fragmentation (due to creating/deleting varying sized strings over months) can bloat RAM heavily. While modern allocators (jemalloc) handle this well, the ultimate mitigation is **Active Defragmentation**. Redis can be configured to slowly sweep memory in the background, copying scattered blocks into contiguous chunks. If it's severe, we execute a failover: Promote the Replica (which naturally built a clean memory tree), take the Master offline, flush it, and rejoin it to the ring as a clean replica.
+
+**Q: How do you handle cache invalidation consistently across multiple geographic datacenters?**
+*Answer:* True multi-region consistency is notoriously difficult. A standard approach is **Pub/Sub or Kafka Event Buses**. If a user's profile is updated in Virginia, the US database writes the change and emits a `ProfileUpdated` event to a global Kafka topic (MirrorMaker). The European cache servers subscribe to this topic and instantly evict the `user_profile` locally. The next Read in Europe will be a Miss, forcing an updated fetch.

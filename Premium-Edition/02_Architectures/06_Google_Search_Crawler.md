@@ -83,4 +83,13 @@ Before downloading a page, the fetcher must resolve `wikipedia.org` to an IP add
 ### HDFS Chunking for Small Files
 Hadoop Distributed File System (HDFS) is designed for terabyte-sized files, not billions of 2MB HTML files. Storing billions of small files will exhaust the HDFS NameNode memory limit.
 *   **Solution:** We stitch thousands of HTML pages together into massive `500MB` archive files (like Hadoop's SequenceFile or Parquet formats). We build a secondary index pointing to the exact byte offset of a specific webpage within the mega-file.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: Modern websites are built with React/Vue (Single Page Applications). If your crawler downloads the HTML, it's just an empty `<div id="root"></div>`. How do you crawl modern JS frameworks?**
+*Answer:* A simple HTTP GET is no longer sufficient. The Fetcher Workers must run "Headless Browsers" (Puppeteer / Playwright). The crawler boots a hidden Chromium instance, physically renders the Javascript, waits for the DOM to settle (or network idle), and *then* extracts the generated HTML structure. This dramatically slows down crawling, forcing the system to heavily scale up computing resources compared to old static HTML scrapers.
+
+**Q: What if a webmaster maliciously attempts a "Compression Bomb" (Zip Bomb) to crash your Fetcher's memory?**
+*Answer:* Fetchers stream the incoming HTTP packets into memory with strict bounds. If the `Content-Length` header states $50	ext{MB}$, but the server streams $5	ext{GB}$ of infinite null bytes masquerading as GZIP data, the Fetcher enforces a hard streaming limit (e.g., $5	ext{MB}$ uncompressed). If it crosses the threshold, the physical TCP connection is severed, the data is dumped, and the domain is penalized.

@@ -82,4 +82,13 @@ A Game Developer commits a $500\text{MB}$ `.psd` Photoshop file or a `.mp4`. Bec
 ### C. The Repack Spikes
 Over time, committing 10,000 small files creates 10,000 tiny physical files on the hard drive, destroying disk I/O performance.
 *   **Mitigation:** `git gc` (Garbage Collection). GitHub servers periodically run background jobs to concatenate all these tiny loose objects into one massive compressed `.pack` file with binary delta-compression, slashing disk usage locally. This heavily spikes CPU.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: If a user executes a `git push --force` and deletes an entire branch, how do you recover the "deleted" commits if they change their mind?**
+*Answer:* A force push merely modifies the branch pointer (the URL of the ref). The underlying Blob and Commit files exist untouched in the Object DB. Git is fundamentally append-only. They are classified as "Orphaned" or "Dangling" commits. GitHub securely retains all objects for weeks, accessible via the `git reflog` interface. Only after rigorous 30-day quiet periods does the `git gc` process permanently purge orphaned objects from the physical disks to recoup space.
+
+**Q: Global Search functionality: Searching across billions of lines of code securely inside private repositories. How is it structured?**
+*Answer:* You cannot query Git Blobs directly for text. Every single time a commit hits the main branch, a Webhook triggers an indexing engine (highly customized Elasticsearch / Zoekt). The indexer splits the code into N-grams or Trigrams (tokens representing variable names/syntax). The complex part is **Permissions**. Security ACLs (Access Control Lists) must be baked directly into the Search Index. When Alice searches "Database Token", the Search Engine pre-filters the query strictly to repository IDs she inherently owns before scanning the N-gram indices.

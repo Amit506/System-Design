@@ -80,4 +80,13 @@ If 10 Million thermostats send $\{temp: 72^\circ\}$ every 10 seconds, that equat
 If every interaction requires a round trip to `us-east-1` (AWS Virginia), home connectivity feels sluggish. Furthermore, if the internet goes down, you can't unlock your own front door because the lock cannot reach AWS.
 *   **Mitigation:** The **Smart Home Hub (Raspberry Pi / Apple TV).**
     The physical house contains a local compute node. It runs a miniature local MQTT broker. The mobile app connects to the Hub via local WiFi/Bluetooth. The Hub processes the "Unlock Door" command locally, entirely bypassing the wider internet, achieving $1\text{ms}$ latency and $100\%$ offline resiliency. The Hub then slowly trickles compressed telemetry logs up to AWS in the background.
-EOF
+
+
+---
+
+## 5. Frequently Asked Hard Interview Questions
+**Q: Firmware (OTA) Over-The-Air Updates. How do you push a 10MB update to 5 Million lightbulbs simultaneously without taking down the global network?**
+*Answer:* Massive Rollout orchestration via **CDN + IoT Staggering**. First, the hardware must utilize Dual-Bank Memory so if an update corrupts, the bulb can physically reboot to the fallback bank instead of bricking permanently. Second, you do not push the binary via MQTT. The Cloud MQTT Broker sends a tiny control message containing a CDN presigned URL: `DOWNLOAD_UPDATE: https://cloudfront...`. The bulbs do an out-of-band HTTP GET. This is rolled out in strict geographic batches (e.g., $5\%$ of bulbs first) to monitor crash analytics before upgrading the other $95\%$.
+
+**Q: What if a local Smart Hub goes completely offline from the internet for a month? Can it store 1 month's worth of telemetry logs locally?**
+*Answer:* Physical Hubs (Raspberry Pi/Appliances) have extremely limited local storage (e.g., eMMC/SD Cards). They run a heavily truncated local TSDB. They apply **Aggressive Downsampling & Eviction**. While online, they send 1-second temperature granularity. Offline, they automatically average data locally. If disk capacity breaches 80%, the hub uses a strict FIFO mechanism, irreversibly dropping the oldest logs. Maintaining operational commands is prioritized over retaining historical metrics.

@@ -94,4 +94,13 @@ erDiagram
 ### Key Optimizations
 *   **Deduplication:** If two completely different users upload the exact same Top Gun MP4 movie, the hashes of their chunks will be identical. The Block Service realizes the `chunk_hash_s3` already exists on the AWS S3 drives. It simply adds a row to `CHUNK_MAPPING` linking User B's file to the existing hash, saving massive gigabytes.
 *   **Cold Storage:** Older row revisions in the `CHUNK_MAPPING` table (versions from 3 years ago) are eventually swept into cheaper, slower storage tiers like Amazon S3 Glacier to cut costs.
-EOF
+
+
+---
+
+## 6. Frequently Asked Hard Interview Questions
+**Q: If you hash every file chunk for deduplication (to save storage), doesn't this open you up to security risks? If an attacker knows the SHA-256 hash of a highly classified document, can they just upload a file with that hash and "gain access" to the real document?**
+*Answer:* Yes, this is an attack vector. To prevent this, the client must undergo a "Proof of Possession" challenge. Even if two chunks hash identically, the server challenges the uploading client to encrypt a random nonce using the raw bytes of the actual document as the seed before they are granted a pointer link to the deduplicated cloud block. Furthermore, files are heavily encrypted *At-Rest* using AES-256 where the user's specific access token contributes to the decryption keyring.
+
+**Q: Collaborative editing vs File Syncing. If two people have a Word Document open in Dropbox, and both click Save, who wins?**
+*Answer:* Dropbox does not merge byte streams mathematically like Google Docs (CRDTs). Dropbox operates strictly on the File level. The first complete upload to hit the Metadata DB increments the `version_id`. The second upload is rejected due to an Optimistic Lock failure (Trying to upload Version 2 against a DB that is already at Version 3). The desktop client downloads the winner, renames the loser's local file to "Conflicted Copy", and leaves it to the humans to manually copy/paste the differences.

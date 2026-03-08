@@ -80,4 +80,13 @@ During Prime Day, a single product (e.g., a $10 TV) gets 5 Million hits per seco
 When a user checks out, we must: Charge the Card, Deduct Inventory, Notify the Warehouse, Send an Email.
 Doing this synchronously in one HTTP request takes 15 seconds.
 *   **Solution:** The Order API writes `Status: PENDING` to SQL, quickly returns `HTTP 200 OK` to the user, and fires an `OrderPlacedEvent` into Kafka. Completely separate microservices (Payment Svc, Notification Svc, Shipping Svc) listen to this Kafka topic and execute their duties asynchronously in the background.
-EOF
+
+
+---
+
+## 5. Frequently Asked Hard Interview Questions
+**Q: An intern accidentally prices a $2,000 laptop at $2. 100,000 people buy it in 5 minutes. The transactions succeed. How do you handle this architecturally?**
+*Answer:* Order processing embraces **Eventual Consistency and Sagas**. The payment and checkout might clear instantly, but the *Fulfillment Saga* is delayed by a few minutes specifically for fraud/anomaly detection. A dedicated Anomaly Microservice flags the $99\%$ price drop. It automatically suspends the Fulfillment Kafka topic for that specific SKU. A massive batch Compensating Transaction is then run: returning the funds, reverting the ledger, and issuing cancellation emails, completely bypassing the manual warehouse queues.
+
+**Q: User carts span multiple devices and guest sessions. If a user adds an item as a "Guest" and then logs in, how is the state resolved?**
+*Answer:* Session Management via Session IDs. A guest cart is tied to an anonymous JWT or Cookie ID stored in DynamoDB. When the user successfully authenticates, the API executes a Cart Merge operation. It pulls the Anonymous Cart, pulls the Authenticated User Cart, resolves any item conflicts (summing the quantity or applying vector clocks), updates the User Cart in DynamoDB, and violently drops the Anonymous Cart to save space.

@@ -88,3 +88,14 @@ query {
 **The Magic:** The server interprets this graph, hits exactly the necessary underlying microservices or databases, and returns the strictly formatted JSON data in a *single network round-trip*. No over-fetching, no under-fetching.
 
 *   *Tradeoffs:* GraphQL is incredibly complex to cache via standard CDNs (because every request is a unique `POST` instead of cacheable `GET` URLs). It also pushes the "N+1 Problem" from the network layer down into the database resolver layer, requiring complex `DataLoader` batching logic to prevent database crashes.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If your REST API supports pagination using `LIMIT 100 OFFSET 10000`, the database will crawl to a halt as the user goes deeper into the pages. Why? How do you fix it?"**
+*Answer:* SQL `OFFSET` physically scans the first 10,000 rows, throws them away, and then returns the next 100. This is an $O(N)$ operation that destroys CPU resources on deep pages.
+*Fix:* **Keyset Pagination (Cursor Pagination).** Instead of page numbers, the API returns a cursor (the `ID` of the last item). The next query becomes `SELECT * FROM items WHERE id > 10000 LIMIT 100`. Assuming `id` is indexed, this becomes a blazing fast $O(1)$ index seek, remaining perfectly performant no matter how deep the user scrolls.
+
+**Q: "A webhook endpoint is publicly accessible so Stripe can send you payment alerts. How do you prevent a malicious hacker from just `POST`ing fake 'Payment Success' JSON payloads to it?"**
+*Answer:* **Webhook Signatures.** Stripe computes a cryptographic hash (HMAC) of the entire JSON body using a shared secret password that only Stripe and Your Server know. Stripe passes this hash in an HTTP Header. Your server receives the body, hashes it locally using the secret, and compares the hashes. If the hacker alters the payload or doesn't know the secret, the hashes immediately mismatch and the fake webhook drops instantly.

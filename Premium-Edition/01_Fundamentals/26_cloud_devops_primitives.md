@@ -78,3 +78,14 @@ Serverless is not perfect.
 *   If your Lambda function hasn't been executed in 15 minutes, AWS puts it to "sleep" (destroys the container) to save RAM.
 *   When a new request arrives, AWS has to physically boot up a new container, load the Python runtime, load your dependencies (like Pandas or Numpy), and then execute the code.
 *   This initialization process can take 2 to 5 seconds. This is a **Cold Start**. If your Lambda is behind an API Gateway responding to user clicks, a user occasionally experiencing a random 5-second latency spike is unacceptable UI design. (This is why high-volume, low-latency APIs are still written in persistent Docker containers, not Serverless Lambdas).
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "If 'Infrastructure as Code' (Terraform) is perfectly declarative, what is 'State Drift' and why does it break deployments?"**
+*Answer:* Terraform stores a `<state>.tfstate` file outlining exactly what the cloud should look like. Suppose a panicked junior developer manually logs into the AWS UI during a P1 outage and changes a Security Group port from 443 to 80 to "fix it temporarily". This is State Drift. The physical reality of AWS no longer matches the `.tfstate` file. The next time the CI/CD pipeline runs `terraform apply`, Terraform detects the drift, assumes the developer's manual UI change is a bug, and forcefully rips the port back to 443, potentially causing a secondary massive outage.
+
+**Q: "Why would you use 'Immutable Infrastructure' (where servers are never updated or patched) over traditional configuration tools like Ansible or Chef?"**
+*Answer:* Traditional tools SSH into a live Production server to run `apt-get upgrade` or install new Python patches (Configuration Drift). Sometimes, randomly, apt-get fails, leaving the server physically half-broken (The "Snowflake Server" problem).
+*Immutable Paradigm:* You never SSH in. You never patch live. Instead, you build a brand new isolated Docker Image or AWS AMI from complete scratch offline. You heavily test the image. You kill 100% of the live production servers instantly, and spin up 100% fresh replicas using the new image. It guarantees structural identicality across all 5,000 servers.

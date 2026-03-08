@@ -86,4 +86,13 @@ When your Trie holds $200$ GB of English text, it exceeds the RAM limits of a si
 ## 6. Real-World API Optimizations
 1. **Client-Side Debouncing:** A user types `S` (wait), `y` (wait), `s`. Instead of firing an HTTP request instantly per character, the Javascript client "debounces" logic. It waits 100ms after a keystroke. If the user hits the next key quickly, it cancels the previous outgoing HTTP request. This slashes backend load by $50\%$.
 2. **Local Browser Caching:** When a user types `S`, the browser downloads the top 50 suggestions for `S` locally. When the user types `S` then `y`, the browser does *not* hit the backend. It checks the local array first.
-EOF
+
+
+---
+
+## 7. Frequently Asked Hard Interview Questions
+**Q: How do you handle multi-language/localization? A user in Tokyo typing "App" shouldn't see "Applebee's Menu".**
+*Answer:* Tries are heavily partitioned by Region/Locale. You do not just build one massive global Trie. You build `Trie_US_EN`, `Trie_JP_JA`, etc. The Load Balancer looks at the User's `Accept-Language` header and GeoIP data to route the query to the hyper-specific regional instance of the Autocomplete service, drastically improving relevance and reducing the memory footprint per instance.
+
+**Q: A user routinely searches for highly specific obscure things (e.g., a specific database ID). How do you personalize their autocomplete if the global Trie only cares about the Top 5 most searched words?**
+*Answer:* **Federated Search at the Edge.** The browser/client app stores a local SQLite or indexedDB cache of the user's specific history. When they type 3 letters, the API provides the 5 global completions, but the localized app dynamically overrides or injects the personalization locally on the device, eliminating the need to store 1 Billion personalized micro-Tries in the main backend memory.

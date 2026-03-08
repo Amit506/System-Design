@@ -65,3 +65,14 @@ Apply a mathematical hash to a key (like `user_id` or `uuid`), then use modulo a
 3.  **The "Celebrity" Hotspot:**
     *   *Problem:* You sharded by `user_id` perfectly. But what if Justin Bieber (User 99) is on Shard 4? Millions of users hitting Shard 4 just to read his timeline will crash Shard 4, while the other shards sleep.
     *   *Solution:* Heavily cache Justin Bieber's data in Redis to protect the shard, or implement custom logic to separate mega-users onto their own dedicated, ultra-powerful isolated database servers.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "You decided to partition your User database by `user_id % 10`. What is the catastrophic flaw of this approach?"**
+*Answer:* This is naive Modulo Hashing. If your traffic grows and you need to add an 11th server to the cluster, the formula becomes `user_id % 11`. Mathematically, almost every single user will now explicitly route to a different server than they did before. You must physically move $90\%$ of your data across the network to re-balance the cluster, causing massive downtime. The solution is **Consistent Hashing**, where adding a node only requires moving $1/N$ of the data.
+
+**Q: "What is the 'Celebrity Problem' (Hot Partitioning), and how do you resolve it if you partition a Social Network purely by `User_ID`?"**
+*Answer:* If Justin Bieber (`User_ID = 5`) goes viral, $99\%$ of global traffic queries Server 2 (where his data lives). Server 2 crashes, while Servers 1, 3, and 4 sit completely idle. Sharding solely by `User_ID` creates a Hot Key.
+*Solution:* **Compound Routing Keys / Salt Hashing.** You append a random salt to the celebrity's ID or append the timestamp (`User_ID_5_Timestamp`). This mathematically forces their data (and the read traffic) to be sliced and distributed across all the servers in the cluster evenly.

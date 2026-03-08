@@ -68,3 +68,14 @@ Memory is expensive. You can't store 10TB of database data in 1TB of Redis Cache
 ### Global vs. Distributed Caches
 *   **Global Cache:** One massive Redis node. Easy to manage, single point of failure.
 *   **Distributed Cache:** Hashing keys across a cluster of 10 Redis nodes. Infinite scaling capacity. If node 3 dies, you only lose 10% of your cached keys via Consistent Hashing.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "What is a 'Cache Stampede' and how do you prevent it?"**
+*Answer:* A Cache Stampede occurs when a highly popular key (e.g., a viral video) expires from the cache. In the exact millisecond it expires, 10,000 concurrent user requests hit the cache, get a "Miss", and all 10,000 requests simultaneously hammer the backend Database to recalculate the value. This DDOS-es your own database. 
+*Solution:* **Mutex Locks (Distributed Locking).** The first thread that misses the cache places a lock in Redis. The other 9,999 threads see the lock and sleep for $50	ext{ms}$ to wait, rather than hitting the DB.
+
+**Q: "Write-Through caching provides perfect data consistency. Why doesn't every company just use Write-Through caching?"**
+*Answer:* Because it introduces severe **Write Latency Penalty**. In Write-Through, the application must wait for the Cache to save, AND the Database to save, before returning `HTTP 200 OK` to the user. If you have an extremely write-heavy application (like Uber tracking GPS), the user's app will constantly lag waiting for dual-layer synchronization. Write-Through is strictly for Read-Heavy, Consistency-Critical data (like user passwords).

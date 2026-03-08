@@ -79,3 +79,17 @@ Rate Limiting counters must be kept in a centralized, insanely fast in-memory da
 ### Edge Case: Redis Race Conditions
 If two Gateways read the Redis counter (Value = 4) simultaneously, and both increment it locally and write back (Value = 5), one request was "lost" due to the race condition.
 *   **Fix:** Use **Redis Lua Scripts**. A Lua script executes entirely on the Redis server atomically (blocking all other operations for microseconds), ensuring perfect transactional increments without race conditions.
+
+
+---
+
+## Frequently Asked Tricky Interview Questions
+**Q: "A dedicated attacker knows your Rate Limiter blocks them if they exceed 100 requests per minute from their IP address. How do they easily bypass your rate limiter, and how do you defend against it?"**
+*Answer:* They use a Botnet or rotating Residential Proxies (changing their IP address on every request). A purely IP-based rate limiter is useless against distributed attacks. 
+*Defense:* You must implement **Multi-Tiered Rate Limiting**. 
+1. Limit by IP (basic defense).
+2. Limit by `User_ID` / API Key (authenticates the actual user across IPs).
+3. Limit globally by `Route` (if `POST /login` exceeds global 10,000 requests/sec, the system physically begins shedding load universally to save the database, regardless of IP).
+
+**Q: "If your Rate Limiter uses a Redis cluster, and the Redis cluster physically crashes and dies, what should the API Gateway do?"**
+*Answer:* **Fail Open.** Rate limiters are defensive mechanisms. If the defense breaks, you should generally allow traffic to flow to the core application to keep the business running (returning HTTP 200s), rather than failing closed (returning HTTP 500s to all legitimate users because the limiter is dead). You sacrifice backend load safety for user availability.
