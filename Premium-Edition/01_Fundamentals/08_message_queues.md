@@ -43,6 +43,17 @@ Not all messaging systems are built the same. You must know when to use which.
 
 ---
 
+## 🏆 Technology Showdown: Kafka vs. RabbitMQ vs. SQS
+In system design interviews, you must know exactly which tool to pick and why. 
+
+| Technology | Architecture | Best For | Pros | Cons & Limitations |
+| :--- | :--- | :--- | :--- | :--- |
+| **Apache Kafka** | Distributed Commit Log (Pub/Sub Event Streaming) | Big Data pipelines, clickstream tracking, log aggregation, Event Sourcing. | Mathematical guarantee of event ordering within a partition. Astounding throughput (Millions of msg/sec). Highly durable (replay history). | Extremely complex to set up (ZooKeeper). Overkill for simple task routing. |
+| **RabbitMQ** | Traditional Message Broker (AMQP Protocol) | Complex task routing (e.g., routing emails to the 'fast' queue and video to the 'slow' queue). | Incredible flexibility via "Exchanges" (Direct, Topic, Fanout). Low latency. Natively supports "Push" model requiring consumer ACKs. | Messages are deleted upon ACK (no historical replay). Performance drops heavily if the queue fills up to terabytes. |
+| **Amazon SQS** | Serverless Point-to-Point Queue | Simple, highly-durable decoupling without wanting to manage infrastructure. | Zero maintenance. Infinite scalability. Dirt cheap. Natively integrates with AWS Lambda and DLQs. | Very rigid. Standard SQS does *not* guarantee strict ordering or exactly-once delivery. Vendor lock-in. |
+
+---
+
 ## 🧟 Advanced Topics (The Pitfalls)
 
 If you suggest a Message Queue in an interview, be prepared to answer these questions:

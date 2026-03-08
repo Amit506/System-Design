@@ -171,6 +171,14 @@ To master System Design, you must trace concepts through these 20 carefully sele
 #### 19. Design a Distributed Task Scheduler - *Concepts: Delayed cron execution at scale, Distributed locking (Zookeeper), Queue management.*
 #### 20. Design an IoT Smart Home Hub - *Concepts: MQTT pub/sub protocols, Edge ingestion buffering, Time-series databases.*
 
+### 1.23 THE MASTER CHEATSHEET: Ultimate Technology Showdown Tables
+**Concept:** A pristine, tabular breakdown comparing the literal software technologies you must choose from during an interview.
+*   **Databases:** Relational vs Columnar vs Document vs Graph.
+*   **Networking:** REST vs gRPC vs WebSockets.
+*   **Queues:** Kafka vs RabbitMQ vs SQS.
+*   **Compute:** Kubernetes vs Serverless Lambda vs Virtual Machines.
+*   **Languages:** Node.js vs Go vs Java vs Rust scalability limits.
+
 ---
 
 ### Final Blueprint: Preparing for the Interview
