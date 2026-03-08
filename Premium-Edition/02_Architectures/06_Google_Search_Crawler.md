@@ -45,7 +45,7 @@ graph TD
     FetcherPool -->|3. Parse Valid HTML| HTMLParser[HTML Parser & Extractor]
     
     HTMLParser -->|1. Check Duplicate Content| ContentHashDB[(Cassandra: Content Hashes)]
-    HTMLParser -->|2. Store Raw Data| HDFS[(HDFS / S3 Storage)]
+    HTMLParser -->|2. Store Raw Data| HDFS[(HDFS + S3 Storage)]
     
     HTMLParser -->|Found New Links| URL_Filter[URL Filter & Normalizer]
     

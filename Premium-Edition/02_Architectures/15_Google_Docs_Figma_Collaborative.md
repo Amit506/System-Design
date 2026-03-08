@@ -36,12 +36,12 @@ The foundation of Google Docs is a clustered WebSocket hierarchy where every act
 
 ```mermaid
 graph TD
-    Alice((Alice)) <-->|WebSocket: Ops| Gateway[API / Load Balancer]
-    Bob((Bob)) <-->|WebSocket: Ops| Gateway
+    Alice((Alice)) -->|WebSocket: Ops| Gateway[API + Load Balancer]
+    Bob((Bob)) -->|WebSocket: Ops| Gateway
     
     Gateway --> DocsRouter[Document Router Svc]
     
-    DocsRouter -->|Hash(DocID)| SessionServer[(Stateful Session Server: Doc A)]
+    DocsRouter -->|HashDocID| SessionServer[(Stateful Session Server: Doc A)]
     
     SessionServer -->|1. Applies OT/CRDT| RAMState[(In-Memory Document State)]
     SessionServer -->|2. Broadcasts merged Ops| Alice

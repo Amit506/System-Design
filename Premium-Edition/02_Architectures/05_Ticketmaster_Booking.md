@@ -31,7 +31,7 @@ The system relies on incredibly fast read layers (Search/Seat Map) and strict, r
 
 ```mermaid
 graph TD
-    Fan((Fan)) -->|10AM Surge| EdgeWait[CDN / Virtual Waiting Room]
+    Fan((Fan)) -->|10AM Surge| EdgeWait[CDN + Virtual Waiting Room]
     EdgeWait -->|Drip Feed| API_Gateway[API Gateway]
     
     API_Gateway --> SearchSvc[Search & Discovery Service]
@@ -44,7 +44,7 @@ graph TD
     BookingSvc -->|2. Transaction Commit| SQLDB[(Primary PostgreSQL)]
     
     SQLDB -->|Async Sync via Kafka| ElasticSearch
-    BookingSvc -->|3. Capture Funds| PaymentGateway[Stripe/Paypal API]
+    BookingSvc -->|3. Capture Funds| PaymentGateway[Stripe+Paypal API]
 ```
 
 ---

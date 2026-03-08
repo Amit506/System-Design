@@ -44,13 +44,13 @@ When you hash a key (`hash("apple") = 205`), you map it to 205 degrees on the ri
 
 ```mermaid
 graph TD
-    AppServer[Application Backend] -->|hash(key)| Router[Hash Router (Consistent Hashing)]
+    AppServer[Application Backend] -->|hashkey| Router[Hash Router (Consistent Hashing)]
     
     Router -->|If key falls to Sector 1| NodeA[(Cache Node A)]
     Router -->|If key falls to Sector 2| NodeB[(Cache Node B)]
     Router -->|If key falls to Sector 3| NodeC[(Cache Node C)]
     
-    NodeA -.->|Async Save| DiskA[Disk Persistence RDB/AOF]
+    NodeA -.->|Async Save| DiskA[Disk Persistence RDB+AOF]
 ```
 
 ---

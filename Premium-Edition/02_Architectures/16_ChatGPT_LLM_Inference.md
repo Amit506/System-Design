@@ -31,7 +31,7 @@ We must rely on **Server-Sent Events (SSE)** or HTTP Chunked Transfer Encoding.
 
 ```mermaid
 graph TD
-    User((User)) -->|POST /chat| API_Gateway[API / Rate Limiter]
+    User((User)) -->|POST /chat| API_Gateway[API + Rate Limiter]
     
     API_Gateway --> Orchestrator[Inference Orchestrator]
     
@@ -39,7 +39,7 @@ graph TD
     
     Orchestrator -->|Prompt| GPU_Router[GPU Request Router]
     
-    GPU_Router -->|Batches requests| Inference_Cluster[(vLLM / TensorRT GPU Cluster)]
+    GPU_Router -->|Batches requests| Inference_Cluster[(vLLM + TensorRT GPU Cluster)]
     
     Inference_Cluster -.->|Streams Tokens| Orchestrator
     Orchestrator -.->|Broadcasts SSE| User

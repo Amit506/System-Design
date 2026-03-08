@@ -38,7 +38,7 @@ graph TD
     API_Gateway --> SchedulerNode[Time Scheduler Cluster]
     
     SchedulerNode -->|Checks time via Redis| RedisZSET[(Redis ZSET: Time Queue)]
-    SchedulerNode -->|If Time reaches NOW| Kafka[Message Broker / Kafka]
+    SchedulerNode -->|If Time reaches NOW| Kafka[Message Broker + Kafka]
     
     Kafka --> WorkerA[Task Worker Node A - Email]
     Kafka --> WorkerB[Task Worker Node B - Payments]

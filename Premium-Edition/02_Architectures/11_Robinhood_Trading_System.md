@@ -30,10 +30,10 @@ Relational databases (SQL) are far too slow for an Order Matching Engine. Disk I
 
 ```mermaid
 graph TD
-    Trader((Retail App)) <-->|TLS/TCP WebSocket| API_Gateway[Broker API Gateway]
+    Trader((Retail App)) -->|TLS/TCP WebSocket| API_Gateway[Broker API Gateway]
     API_Gateway -->|Submit Order| RiskCheck[Pre-Trade Risk Validator]
     
-    RiskCheck -->|Validates Funds| OrderQueue[Sequencer/Memory Queue]
+    RiskCheck -->|Validates Funds| OrderQueue[Sequencer+Memory Queue]
     
     OrderQueue -->|Deterministic Order| MatchingEngine[(In-Memory Matching Engine)]
     

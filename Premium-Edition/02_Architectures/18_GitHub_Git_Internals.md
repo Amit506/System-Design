@@ -54,7 +54,7 @@ GitHub uses a tier of fast proxies that route your request to a cluster of speci
 ```mermaid
 graph TD
     Developer((Developer: git push)) -->|SSH / HTTPS| LoadBalancer[Global Load Balancer]
-    LoadBalancer --> AuthSvc[Authentication (SSH Keys/Tokens)]
+    LoadBalancer --> AuthSvc[Authentication (SSH Keys+Tokens)]
     
     AuthSvc --> GitProxy[Git Protocol Router]
     
@@ -62,7 +62,7 @@ graph TD
     GitProxy -->|Routes to Shard| FileServer_A[(Storage Node: linux.git)]
     
     FileServer_A -->|Update Meta| MySQL
-    FileServer_A -->|Trigger Webhook| WebhookSvc[CI/CD Event Bus]
+    FileServer_A -->|Trigger Webhook| WebhookSvc[CI+CD Event Bus]
 ```
 
 ---

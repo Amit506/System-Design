@@ -32,7 +32,7 @@ The system is cleanly split between Location Tracking (ingesting writes) and Mat
 
 ```mermaid
 graph TD
-    Driver((Driver App)) <-->|WebSocket 4s ping| Gateway[API Gateway]
+    Driver((Driver App)) -->|WebSocket 4s ping| Gateway[API Gateway]
     Rider((Rider App)) -->|HTTP Request| Gateway
     
     Gateway --> LocSvc[Location Service]
@@ -42,7 +42,7 @@ graph TD
     LocSvc -->|Batch Async| DB[(Cassandra Archival DB)]
     
     MatchSvc -->|Radius Search| RedisGeo
-    MatchSvc -->|Attempt Match| DistLock[(Zookeeper/Redlock)]
+    MatchSvc -->|Attempt Match| DistLock[(Zookeeper+Redlock)]
     MatchSvc -.->|Dispatch Accept| Gateway
 ```
 

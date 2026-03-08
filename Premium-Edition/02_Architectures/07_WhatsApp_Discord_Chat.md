@@ -41,8 +41,8 @@ We must track where every active user is connected in real-time.
 
 ```mermaid
 graph TD
-    Alice((Alice)) <-->|WebSocket| ChatA[Chat Server A]
-    Bob((Bob)) <-->|WebSocket| ChatB[Chat Server B]
+    Alice((Alice)) -->|WebSocket| ChatA[Chat Server A]
+    Bob((Bob)) -->|WebSocket| ChatB[Chat Server B]
     
     ChatA -->|1. Find Bob| Presence[(Presence Redis Cache)]
     ChatA -->|2. Route Message| Broker[Message Broker Kafka]

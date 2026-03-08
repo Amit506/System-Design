@@ -40,10 +40,10 @@ The architecture relies heavily on **Pub/Sub (Publish-Subscribe)**.
 
 ```mermaid
 graph TD
-    Bulb((Smart Bulb)) <-->|MQTT Persistent| MQTT_Broker[Cloud MQTT Broker Server]
-    Thermo((Thermostat)) <-->|MQTT Persistent| MQTT_Broker
+    Bulb((Smart Bulb)) -->|MQTT Persistent| MQTT_Broker[Cloud MQTT Broker Server]
+    Thermo((Thermostat)) -->|MQTT Persistent| MQTT_Broker
     
-    User((Mobile App)) <-->|HTTP REST| API_Gateway[API Server]
+    User((Mobile App)) -->|HTTP REST| API_Gateway[API Server]
     
     API_Gateway -->|1. Validate User| AuthSvc[Authentication (JWT)]
     API_Gateway -->|2. Issue Command| KafkaMQ[Kafka Event Bus]

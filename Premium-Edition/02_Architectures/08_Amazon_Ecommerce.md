@@ -45,8 +45,8 @@ This requires **CQRS (Command Query Responsibility Segregation)**. Write data (O
 graph TD
     User((Shopper)) --> API_Gateway[API Gateway]
     
-    API_Gateway --> ReadSvc[Catalog / Search API]
-    API_Gateway --> WriteSvc[Order / Checkout API]
+    API_Gateway --> ReadSvc[Catalog + Search API]
+    API_Gateway --> WriteSvc[Order + Checkout API]
     
     ReadSvc -->|Reads| ElasticSearch[(Elasticsearch Cache)]
     ReadSvc -->|Reads| Redis[(Redis Metadata Cache)]

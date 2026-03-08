@@ -35,7 +35,7 @@ Instead of generating keys dynamically, we use an **offline Key Generation Servi
 
 ```mermaid
 graph TD
-    Client((User Browser)) -->|HTTP GET / HTTP POST| Route53[DNS / Edge Routing]
+    Client((User Browser)) -->|HTTP GET / HTTP POST| Route53[DNS + Edge Routing]
     Route53 --> ALB[L7 Application Load Balancer]
     
     ALB --> API_Write[Write Web Servers]
@@ -48,7 +48,7 @@ graph TD
     API_Write -->|2. Store Mapping| DB
     
     KGS -->|Pre-fetches ranges| Zookeeper[Apache Zookeeper]
-    KGS -->|Unused Keys Pool| KeyDB[(KGS MongoDB/MySQL)]
+    KGS -->|Unused Keys Pool| KeyDB[(KGS MongoDB+MySQL)]
 ```
 
 ---

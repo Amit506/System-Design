@@ -32,7 +32,7 @@ Transcoding (converting a raw video into 1080p, 720p, 480p, mobile, and web form
 graph TD
     User((Creator)) -->|Upload Original| APIServer[API Servers]
     APIServer -->|Stream Chunks| S3Raw[(S3 Raw Bucket)]
-    APIServer -->|Fire Event| Kafka[Message Broker / Kafka]
+    APIServer -->|Fire Event| Kafka[Message Broker + Kafka]
     
     Kafka --> VideoDAG[Video Processing Director]
     
@@ -59,11 +59,11 @@ Netflix and YouTube do not send you one giant file. They dynamically send you 5-
 
 ```mermaid
 graph TD
-    S3[S3 Origin Storage / S3 Processed] -->|Syncs Popular Chunks| CoreCDN[Core Cloud CDN]
+    S3[S3 Origin Storage + S3 Processed] -->|Syncs Popular Chunks| CoreCDN[Core Cloud CDN]
     CoreCDN -->|Pushes to Edge| EdgeCDN((ISP Edge Nodes - Global))
     
-    Viewer_A((Viewer Tokyo)) <-->|Streams 1080p| EdgeCDN
-    Viewer_B((Viewer NYC)) <-->|Streams 4K| EdgeCDN
+    Viewer_A((Viewer Tokyo)) -->|Streams 1080p| EdgeCDN
+    Viewer_B((Viewer NYC)) -->|Streams 4K| EdgeCDN
     
     Viewer_A -.->|Logs viewing metrics| KafkaIngest[Telemetry Queue]
 ```

@@ -45,10 +45,10 @@ graph TD
     User((User typing 'SYS')) -->|1. AJAX Call| LB[Load Balancer]
     LB --> ReadAPI[Read Autocomplete Service]
     
-    ReadAPI -->|2. Check Fast Cache| RedisTrie[(Redis / Distributed Memory Trie)]
+    ReadAPI -->|2. Check Fast Cache| RedisTrie[(Redis + Distributed Memory Trie)]
     ReadAPI -.->|3. Trie Leaf Lookup| RedisTrie
     
-    User -->|4. Hits 'Enter' (Search)| WriteAPI[Search Analytics Svc]
+    User -->|4. Hits 'Enter' Search| WriteAPI[Search Analytics Svc]
     WriteAPI -->|5. Fire Metric| KafkaBroker[Kafka Message Stream]
 ```
 
@@ -58,10 +58,10 @@ Instead, we batch the data.
 
 ```mermaid
 graph LR
-    KafkaBroker[Kafka Stream] --> FlinkIngest[Apache Flink / Spark Streaming]
+    KafkaBroker[Kafka Stream] --> FlinkIngest[Apache Flink + Spark Streaming]
     FlinkIngest -->|Aggregates per hour| HDFSDataLake[(HDFS Data Lake)]
     
-    HDFSDataLake --> MapReduce[Hadoop MapReduce / Spark Batch Job]
+    HDFSDataLake --> MapReduce[Hadoop MapReduce + Spark Batch Job]
     MapReduce -->|Calculates Top-K Frequencies| TrieBuilder[Trie Reconstruction Worker]
     
     TrieBuilder -->|Shadow Swaps| RedisTrie[(Distributed Memory Trie)]
