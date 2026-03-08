@@ -107,7 +107,40 @@ To design systems at a global scale, you must intimately understand the foundati
 *   **Orchestration (Kubernetes):** Pods, Deployments, Services, Ingress, HPA, and the `etcd` control plane.
 *   **Infrastructure as Code (IaC):** Terraform, AWS CloudFormation.
 *   **CI/CD & Serverless:** Blue/Green, Canary handling, Shadow Traffic. AWS Lambda and Cold Starts.
-*   **Observability:** Push vs Pull (Prometheus), Distributed Tracing (Jaeger/OpenTelemetry), Log Aggregation (ELK Stack).
+### 1.16 Distributed Consensus & Leader Election
+**Concept:** How a cluster of machines mathematically agrees on a single truth.
+*   **Algorithms:** Paxos, Raft (used in etcd/Consul), ZooKeeper Atomic Broadcast (ZAB).
+*   **Problems Solved:** Split-Brain syndrome, Fencing Tokens to prevent zombie leader writes.
+
+### 1.17 Service Discovery & Health Checks
+**Concept:** How microservices dynamically find each other's IP addresses in an Auto-Scaling ephemeral cloud.
+*   **Mechanisms:** Client-side vs. Server-side discovery. Service Registries (Consul, Eureka).
+*   **Health Checks:** Active Ping vs. Passive monitoring.
+
+### 1.18 Gossip Protocol & Failure Detection
+**Concept:** Node-to-node communication in masterless architectures (like Cassandra or Amazon Dynamo).
+*   **Mechanisms:** Epidemic multicast (Nodes randomly sharing state to neighbors).
+*   **Failure Detection:** Phi ($\Phi$) Accrual Failure Detector (Probabilistic suspicion rather than binary dead/alive).
+
+### 1.19 CQRS & Event Sourcing
+**Concept:** Separating the systems that mutate data (Command) from those that read data (Query).
+*   **Mechanisms:** Immutable Append-Only Event Logs (Event Sourcing). 
+*   **Read Models:** Asynchronously projecting the event log into heavily optimized read-only databases (Views/Snapshots).
+
+### 1.20 Deep Data Replication Strategies
+**Concept:** The strict mechanics of copying data across clusters to achieve durability.
+*   **Topologies:** Single-Leader, Multi-Leader, Leaderless (Quorum reads/writes).
+*   **Anomalies to Fix:** Replication Lag, Read-After-Write consistency, Monotonic Reads.
+
+### 1.21 Geospatial Indexing (Proximity Services)
+**Concept:** Algorithms to rapidly find "Drivers near me" or "Restaurants within 5 miles" without scanning the entire DB.
+*   **Algorithms:** QuadTrees, Geohashes, Google S2 Geometry, and R-Trees.
+*   **Use Cases:** Uber matching, Yelp searches, Tinder location.
+
+### 1.22 Disaster Recovery & Multi-Region Topologies
+**Concept:** Surviving a catastrophic physical datacenter fire or global network outage.
+*   **Metrics:** RPO (Recovery Point Objective - acceptable data loss limit) and RTO (Recovery Time Objective - acceptable downtime limit).
+*   **Topologies:** Active-Passive (Warm Standby) vs Active-Active Global databases (Google Spanner / CockroachDB).
 
 ---
 
