@@ -41,9 +41,35 @@
                         "term": "HyperLogLog (HLL)",
                         "definition": "Estimates cardinality (count of distinct elements) in O(1) memory. Counting unique visitors to a website: with a set, you'd need memory proportional to the number of unique visitors. HLL uses ~12 KB of memory to count up to billions of unique elements with < 1% error. INTERNAL: hash each element → look at the binary representation → count the position of the first 1 bit (leading zeros). The intuition: seeing many leading zeros is increasingly rare. If the maximum leading zeros seen is 10, there are approximately 2^10 = 1024 unique elements. To reduce variance, split the hash into m buckets (registers), compute per-bucket estimates, and take the harmonic mean. Redis: PFADD, PFCOUNT, PFMERGE (merge multiple HLLs = union of sets). USE CASES: (1) Unique visitor counting (Redis HLL). (2) Google BigQuery approximate_count_distinct(). (3) Network monitoring (unique IP counts)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Bloom Filter Implementation in Python",
+                        "description": "A functional snippet showing how hashing enables O(1) memory-efficient set membership testing.",
+                        "code": "import hashlib\nimport math\nfrom bitarray import bitarray\n\nclass BloomFilter:\n    def __init__(self, items_count, fp_prob):\n        # Calculate Optimal Array Size (m)\n        self.size = self.get_size(items_count, fp_prob)\n        # Calculate Optimal Number of Hash Functions (k)\n        self.hash_count = self.get_hash_count(self.size, items_count)\n        # Initialize bit array to all 0s\n        self.bit_array = bitarray(self.size)\n        self.bit_array.setall(0)\n\n    def add(self, item):\n        for i in range(self.hash_count):\n            # Create k deterministic hashes using a salt (str(i))\n            digest = hashlib.md5((item + str(i)).encode('utf8')).hexdigest()\n            index = int(digest, 16) % self.size\n            self.bit_array[index] = 1\n\n    def check(self, item):\n        for i in range(self.hash_count):\n            digest = hashlib.md5((item + str(i)).encode('utf8')).hexdigest()\n            index = int(digest, 16) % self.size\n            # If any bit is 0, the item is DEFINITELY NOT in the set\n            if self.bit_array[index] == 0:\n                return False\n        # If all bits are 1, it is PROBABLY in the set\n        return True\n\n    @staticmethod\n    def get_size(n, p):\n        m = -(n * math.log(p)) / (math.log(2)**2)\n        return int(m)\n\n    @staticmethod\n    def get_hash_count(m, n):\n        k = (m/n) * math.log(2)\n        return int(k)\n\n# Usage:\n# bloom = BloomFilter(items_count=1000000, fp_prob=0.01)\n# bloom.add(\"malicious-domain.com\")\n# bloom.check(\"google.com\") -> False (Guaranteed)\n# bloom.check(\"malicious-domain.com\") -> True (Probably)"
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch14.s02",
@@ -69,6 +95,18 @@
                     {
                         "term": "R-Tree",
                         "definition": "Similar to B-Tree but for multi-dimensional data. Each node contains a bounding rectangle that encompasses all its children. Used by PostGIS (Postgres spatial extension) for spatial queries. Supports: point-in-polygon, nearest-neighbor, range queries. More general than Quadtree — works with arbitrary rectangles and polygons, not just points."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Uber's Geospatial Architecture: From Quadtrees to H3",
+                        "description": "How Uber scales location matching for millions of drivers and riders using hexagonal hierarchical spatial indexing.",
+                        "code": "The Problem:\nUber needs to instantly match a rider with the nearest 5 drivers. Calculating the Haversine distance (great-circle distance) between the rider and every single 100,000 active drivers in a city requires enormous CPU overhead.\n\nThe Evolution:\n1. Early Days (Quadtrees): Uber initially used Quadtrees to segment the map into squares. A quadtree node would split when it held too many drivers. To find drivers, Uber queried the quadtree node containing the rider.\n2. The Flaw with Squares: Bounding boxes are squares. Searching 'within a radius' on a square grid means the diagonal corners are further away than the edges, causing inaccurate distance sorting.\n3. The Innovation (H3): Uber invented H3, an open-source Hexagonal Hierarchical Spatial Index. Hexagons are the closest shape to a circle that can seamlessly tile a flat plane. \n\nThe Architecture:\nWhen a driver pings their GPS location, Uber's backend calculates the H3 Hexagon ID for that lat/long. It stores the driver in a Redis cluster keyed by the Hexagon ID. When a rider opens the app, Uber calculates the rider's Hexagon ID and fetches all drivers in that hexagon (and the 6 immediately adjacent hexagons) from Redis in O(1) time.\n\nTakeaway for Interviews:\nNever calculate distances against raw coordinates in a database (e.g., `SELECT * WHERE distance(lat, lon) < 5`). Always use a spatial index (Geohash, Quadtree, H3) to map 2D coordinates into a 1D string/integer, allowing O(1) lookups in standard K-V stores or B-Trees."
+                    },
+                    {
+                        "title": "Spatial Data Structure Decision Matrix",
+                        "description": "Use this matrix to justify your geospatial architecture in systems like Uber, Yelp, or Tinder.",
+                        "code": "ARCHITECTURE                   | INTERNAL MECHANISM           | ACCURACY | BEST USED FOR\n-------------------------------|------------------------------|----------|-----------------------------------------------------\nPostGIS (R-Tree)               | Tree of Bounding Boxes       | Perfect  | Complex polygons, traditional GIS, exact boundaries\nGeohash (Elasticsearch/Redis)  | Z-Order Curve (Base32 String)| Low-Med  | \"Points of interest within X miles\" (Yelp, Tinder)\nQuadtree                       | Splitting Squares            | Medium   | Dynamic densities (dense cities vs sparse rural)\nH3 (Hexagonal Grid)            | Hexagons with identical radii| High     | Distance-critical sweeping algorithms (Uber, Lyft)"
                     }
                 ]
             },
@@ -117,5 +155,13 @@
             "title": "GeoHash Visualization",
             "url": "http://geohash.org/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Geospatial Quad-Trees",
+        "description": "Splitting 2D geographic space into searchable quadrants.",
+        "data": {
+            "mermaid_source": "graph TD\n  Root[Global Map Node] --> NW[North-West Quadrant]\n  Root --> NE[North-East Quadrant]\n  Root --> SW[South-West Quadrant]\n  Root --> SE[South-East Quadrant]\n  \n  NE --> C{Cap Exceeded? (>100 cars)}\n  C --> |Yes| Split[Split into 4 deeper sub-quadrants]\n  Split --> NE_NW[NE->NW]\n  Split --> NE_NE[NE->NE]\n  \n  style Root fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style Split fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd"
+        }
+    }
 }

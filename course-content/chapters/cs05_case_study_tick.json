@@ -1,0 +1,109 @@
+{
+    "id": "cs05",
+    "title": "Case Study: Ticketmaster / Flash Sale Booking",
+    "parent_id": null,
+    "order": 22,
+    "tags": [
+        "case-study",
+        "booking",
+        "concurrency",
+        "locking",
+        "transactions"
+    ],
+    "summary": "Design a ticketing system capable of handling extreme, sudden spikes in traffic (e.g., Taylor Swift concert) while preventing double-booking and ensuring fair access.",
+    "explanation": {
+        "overview": "Ticketing, flash-sales, and hotel booking systems are uniquely difficult. Unlike a social network where eventual consistency is acceptable, selling a limited physical asset (a specific seat) requires strict transactional consistency (ACID). If two users click 'Buy Seat 5A' at the exact same millisecond, only one must succeed. This is a battle against the flash-crowd thundering herd.",
+        "how_it_works_internally": "INTERNAL Mechanics: The system leverages a massive, asynchronous queuing system (Virtual Waiting Room) before users ever reach the booking page to protect the database. When a user selects a seat, the system issues a Distributed Lock (via Redis) or relies on pessimistic database row locks (e.g., `SELECT FOR UPDATE`). Once locked, the user has 5 minutes to complete payment. If payment succeeds, the seat state changes to 'SOLD'. If the timer expires or the payment fails, the lock is released, and the seat becomes 'AVAILABLE' again. This relies on TTL (Time-To-Live) keys in Redis or a background chron job in SQL.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "Virtual Waiting Room",
+                "detail": "Requests pour in at 1M QPS. They hit an Edge CDN layer and are funneled into a Kafka queue. Users receive a WebSocket polling token showing their place in line. This converts a 1M QPS DDoS storm into a controlled 5,000 QPS trickle to the booking servers."
+            },
+            {
+                "step": 2,
+                "title": "Seat Reservation (Locking)",
+                "detail": "User selects Seat 1A. Application attempts to execute an atomic operation in Redis: `SETNX seat:1A user_123 EX 300`. If successful, the seat is locked for 300 seconds (5 mins)."
+            },
+            {
+                "step": 3,
+                "title": "Payment Processing",
+                "detail": "User inputs credit card. System posts to Stripe. To prevent dropped connections ruining the transaction, a Transactional Outbox pattern ensures the 'Payment Intent' event is durably committed before responding."
+            },
+            {
+                "step": 4,
+                "title": "Finalization",
+                "detail": "Stripe webhook confirms payment. Booking service changes Postgres row `status='SOLD'` and deletes the temporary Redis lock."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Distributed Locking (Mutex)",
+                "definition": "INTERNAL: Ensuring only one process across a distributed fleet of servers can mutate a specific resource. Usually implemented via Redis `SETNX` or ZooKeeper ephemeral nodes."
+            },
+            {
+                "term": "Pessimistic vs Optimistic Locking",
+                "definition": "Pessimistic: Locking the database row before reading it (`SELECT ... FOR UPDATE`), entirely preventing other reads. Optimistic: Reading a row with a version number (V1), making changes, and updating ONLY IF the version hasn't changed (`UPDATE ... WHERE version=1`). Flash sales strictly require Pessimistic Locking to avoid massive retry storms."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Redis Lock TTL",
+                "description": "Concrete Python code proving how to implement a safe expiration lock for a seat reservation.",
+                "code": "import redis\nimport time\n\nr = redis.Redis(host='localhost', port=6379, db=0)\n\ndef reserve_seat(seat_id, user_id):\n    lock_key = f\"lock:seat:{seat_id}\"\n    # SETNX (Set if Not eXists) with a 5 minute expiration (300 sec)\n    acquired = r.set(lock_key, user_id, ex=300, nx=True)\n    \n    if acquired:\n        print(f\"Success! Seat {seat_id} reserved for {user_id}. Please pay within 5 mins.\")\n        return True\n    else:\n        print(f\"Failed. Seat {seat_id} is currently held by someone else.\")\n        return False"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Java Spring Boot JDBC snippet demonstrating pessimistic row locks.",
+                "code": "public class TicketRepository {\n    @Transactional\n    @Query(\"SELECT t FROM Ticket t WHERE t.id = :id AND t.status = 'AVAILABLE' FOR UPDATE SKIP LOCKED\")\n    public Optional<Ticket> lockAvailableTicket(@Param(\"id\") Long id);\n    // SKIP LOCKED is critical here. If 10,000 threads ask for tickets, they won't queue up blocking on one row.\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: Locking Strategies",
+                "description": "Evaluating how to prevent double booking.",
+                "code": "OPTION DB Pessimistic Lock vs OPTION Redis SETNX Lock\n-----------------------------------------------------\nPros DB Lock: Guaranteed absolute consistency, ACID compliant, no split-brain.\nCons DB Lock: Extremely slow under high contention, can cause connection pool exhaustion.\nPros Redis Lock: Extremely fast, high throughput.\nCons Redis Lock: Vulnerable to Redis cluster failovers (master dies before replicating lock), requiring complex Redlock algorithms."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Payment timeouts and Zombie Locks.",
+                "code": "try-catch fallback mechanics:\n1. PaymentTimeoutException: User closes browser mid-payment. The Redis TTL expires naturally after 5 minutes restoring the seat. \n2. DoubleChargeException: Server crashes right after Stripe replies. We must use an Idempotency Key (UUID generated by client at checkout) so submitting the retry doesn't charge the card twice."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (HikariCP DB Pools)",
+            "default": "maximumPoolSize = 10",
+            "effect": "Modify parameter `maximumPoolSize = 500` and `connectionTimeout = 1000ms`. Flash sales exhaust DB connections instantly.",
+            "tradeoff": "Increasing the pool size allows more concurrent queries, but if maxed out, thousands of Tomcat threads block, crashing the web server via thread starvation."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Handling complex multi-step checkout flows.",
+            "how": "Use the Saga Pattern. Instead of a massive distributed 2-Phase Commit (2PC) spanning the Booking Service and the Payment Service, emit events: Seat_Reserved -> Payment_Initiated -> Payment_Failed -> Seat_Released. State machines track the Saga progression."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Ticketmaster Flash Sale Architecture",
+        "description": "Virtual Waiting Room and Redis Locked Checkout Flow.",
+        "data": {
+            "mermaid_source": "graph TD\n  Users[1 Million Users] --> Edge[Edge / WAF]\n  Edge --> WaitingRoom[Virtual Waiting Room / Kafka Queue]\n  WaitingRoom --> |Trickle 5k QPS| BookingAPI[Booking Servers]\n  BookingAPI --> Redis[(Redis: SETNX Lock)]\n  Redis -.-> |Lock Acquired| PG[(PostgreSQL: Commit Order)]\n  PG --> Stripe((Stripe Payments))\n  Redis -.-> |Lock Failed| FailMsg[Return 'Seat Taken']\n  \n  style WaitingRoom fill:#ff9900\n  style Redis fill:#ff4d4d"
+        }
+    },
+    "limitations": [
+        "Scalping Bots: Bots can bypass waiting rooms and scrape seats in 50ms. TWEAK: Enforce strict CAPTCHA at the edge, device fingerprinting, and require pre-registered Verified Fan accounts tied to phone numbers.",
+        "Hot Partitions: If everyone is querying a single concert ID in PostgreSQL, the B-Tree index becomes a hot partition. TWEAK: Pre-warm a Redis cluster with the inventory mapping and route all 'Is Available?' queries to Redis. Only hit Postgres when the checkout button is actually clicked."
+    ],
+    "technologies_used": [
+        {
+            "technology": "PostgreSQL `SKIP LOCKED`",
+            "details": "A database feature allowing concurrent transactions to skip over rows already locked by other transactions. Perfect for finding the 'next available general admission ticket' without halting the entire database."
+        },
+        {
+            "technology": "Kafka & Virtual Waiting Rooms",
+            "details": "Using something like AWS SQS or Kafka to buffer incoming requests. A reverse proxy (Nginx or Cloudflare Worker) checks the queue depth. If the system is at max capacity, it returns an HTML holding page instead of routing to the API."
+        }
+    ]
+}

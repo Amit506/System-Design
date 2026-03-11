@@ -32,7 +32,7 @@
                 "key_concepts": [
                     {
                         "term": "Functional Requirements (FR)",
-                        "definition": "What the system must DO. These are user-facing features. Examples: 'Users can post tweets up to 280 characters', 'Users can follow other users', 'Users can view a chronological feed of posts from people they follow'. Each FR drives at least one API endpoint and one data flow in your architecture. Always enumerate exactly 3-5 FRs during an interview — too few means you missed scope, too many means you'll run out of time."
+                        "definition": "INTERNAL: What the system must DO. These are user-facing features. Examples: 'Users can post tweets up to 280 characters', 'Users can follow other users', 'Users can view a chronological feed of posts from people they follow'. Each FR drives at least one API endpoint and one data flow in your architecture. Always enumerate exactly 3-5 FRs during an interview — too few means you missed scope, too many means you'll run out of time."
                     },
                     {
                         "term": "Non-Functional Requirements (NFR)",
@@ -49,6 +49,10 @@
                     {
                         "term": "Trade-offs",
                         "definition": "Every design decision involves trade-offs. The hallmark of a strong candidate is explicitly stating trade-offs rather than just picking a technology. Example: 'I'm choosing Cassandra over PostgreSQL because we have a write-heavy workload (500K writes/sec). The trade-off is we lose JOIN support and strong consistency, but our access patterns don't require joins and eventual consistency is acceptable for a social feed.' Always use the pattern: 'I chose X because [reason]. The trade-off is [downside], which is acceptable because [justification].'"
+                    },
+                    {
+                        "term": "Architecture Decision Record (ADR)",
+                        "definition": "FAANG 2024 Trend: A document that captures an important architectural decision made along with its context and consequences. In an interview, treating the whiteboard like an ADR proves seniority. Structure: Context (why are we making this choice?), Options (what did we consider?), Decision (what did we choose?), Consequences (what are the trade-offs we accepted?)."
                     }
                 ],
                 "examples": [
@@ -56,6 +60,16 @@
                         "title": "FR/NFR Scoping Example — Design Twitter",
                         "description": "Functional Requirements: (1) Users can post tweets (text, up to 280 chars, optionally with images). (2) Users can follow/unfollow other users. (3) Users can view their home timeline — a feed of recent tweets from people they follow, in reverse chronological order. Non-Functional Requirements: (1) Highly available — 99.99% uptime (< 52 min downtime/year). (2) Read-heavy — 10:1 read:write ratio (most users browse, few post). (3) Low latency — feed loads in < 200ms p99. (4) Eventual consistency is acceptable — a new tweet can take up to 5 seconds to appear in followers' feeds. (5) Scale target: 500M users, 200M DAU, ~10K tweets/sec average.",
                         "code": ""
+                    },
+                    {
+                        "title": "Java: Defining the Core API Interface Before Architecture",
+                        "description": "In senior interviews, writing a clean interface before drawing boxes proves you understand the contract boundaries.",
+                        "code": "public interface TwitterService {\n    /**\n     * @param userId ID of the user posting the tweet\n     * @param content Tweet text (max 280 chars)\n     * @param mediaIds Optional list of UUIDs pointing to blob storage\n     * @return The canonical ID of the newly created tweet\n     */\n    @PostMapping(\"/api/v1/tweets\")\n    @ResponseStatus(HttpStatus.CREATED)\n    UUID postTweet(\n        @RequestHeader(\"X-User-Id\") UUID userId,\n        @RequestBody String content,\n        @RequestBody(required=false) List<UUID> mediaIds,\n        @RequestHeader(\"Idempotency-Key\") String idempotencyKey // FAANG standard for safely retrying POSTs\n    );\n}"
+                    },
+                    {
+                        "title": "Python (FastAPI): Mocking the Read Path (Timeline)",
+                        "description": "Using standard Python typing to demonstrate cursor-based pagination for feeds.",
+                        "code": "from fastapi import APIRouter, Depends, Query\nfrom pydantic import BaseModel\nfrom typing import List, Optional\nimport uuid\n\nclass TweetResponse(BaseModel):\n    tweet_id: uuid.UUID\n    content: str\n    timestamp: int\n\nclass FeedResponse(BaseModel):\n    tweets: List[TweetResponse]\n    next_cursor: Optional[str]\n\nrouter = APIRouter()\n\n@router.get('/api/v1/feed', response_model=FeedResponse)\nasync def get_timeline(\n    user_id: uuid.UUID,\n    cursor: Optional[str] = Query(None, description=\"Base64 encoded timestamp+id for pagination\"),\n    limit: int = Query(20, le=100)\n):\n    # Returning the abstract contract\n    pass"
                     }
                 ]
             },
@@ -65,7 +79,16 @@
                 "Ignoring non-functional requirements — scale/latency targets fundamentally change the architecture (a system for 1K users is completely different from one for 100M users).",
                 "Jumping to technology choices before understanding requirements — 'let's use Kafka!' without knowing if you need async processing."
             ],
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch00.s02",
@@ -230,7 +253,12 @@
                     "mermaid_source": "graph LR\n  A[\"1. Requirements\\n~5 min\"] --> B[\"2. Core Entities\\n~2 min\"]\n  B --> C[\"3. API Design\\n~5 min\"]\n  C --> D[\"4. Data Flow\\n~5 min (optional)\"]\n  D --> E[\"5. High-Level Design\\n~10-15 min\"]\n  E --> F[\"6. Deep Dives\\n~10 min\"]\n  style A fill:#4CAF50,color:white\n  style F fill:#FF5722,color:white"
                 }
             },
-            "children": []
+            "children": [],
+            "limitations": [
+                "Over-indexing on Frameworks: Interviewers are explicitly trained to break candidates out of memorized frameworks. If you sound like a robot reading a checklist, they will interrupt you.",
+                "Time Misallocation: The biggest failure reason in senior interviews is spending 25 minutes on API definitions and not reaching the complex distributed systems deep dives.",
+                "Ignoring the Interviewer: If the interviewer asks about database partitioning in minute 5, abandon the framework and talk about database partitioning. They hold the rubric."
+            ]
         },
         {
             "id": "ch00.s04",
@@ -426,112 +454,52 @@
                     "children": []
                 }
             ]
+        },
+        {
+            "id": "ch00.s05",
+            "title": "Architecture Review Checklist & Decision Matrices",
+            "parent_id": "ch00",
+            "order": 5,
+            "tags": [
+                "checklist",
+                "adr",
+                "matrices",
+                "interactive"
+            ],
+            "summary": "A production-grade checklist to evaluate any system architecture and decision matrices for common technology choices.",
+            "explanation": {
+                "overview": "Before concluding your interview, double-check your architecture against these key criteria. In real life, this is the checklist Staff Engineers use during Architecture Review Board (ARB) meetings.",
+                "key_concepts": [
+                    {
+                        "term": "Single Point of Failure (SPOF)",
+                        "definition": "If node X dies, does the system halt? Ensure every tier (LB, App, DB, Cache) has redundancy and automatic failover."
+                    },
+                    {
+                        "term": "Bottleneck Identification",
+                        "definition": "Where is the system constrained? CPU, Memory, Disk I/O, or Network Bandwidth? If user scale grows 10x, which box breaks first?"
+                    },
+                    {
+                        "term": "Data Loss Vectors",
+                        "definition": "If a datacenter loses power right now, what data is permanently lost? Are writes acknowledged only after disk sync or while in memory?"
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Decision Matrix: Database Selection",
+                        "description": "How FAANG engineers confidently select database types.",
+                        "code": "REQUIREMENT                  | SQL (Postgres) | NoSQL (Cassandra) | Graph (Neo4j) | Blob (S3)\n-----------------------------|----------------|-------------------|---------------|----------\nACID Transactions            | Excellent      | Poor              | Good          | N/A\nHorizontal Scalability       | Hard (Sharding)| Excellent         | Hard          | Excellent\nComplex JOINs                | Excellent      | N/A               | Excellent     | N/A\nRead-Heavy (Low Latency)     | Good           | Excellent         | Good          | Good\nWrite-Heavy (>100k TPS)      | Poor           | Excellent         | Poor          | Good"
+                    }
+                ]
+            },
+            "children": []
         }
     ],
     "diagram": {
-        "type": "excalidraw",
+        "type": "mermaid",
         "title": "System Design Interview Flow Overview",
-        "description": "Shows the progression from problem statement through 6 steps to final architecture, with feedback loops for deep dives.",
+        "description": "Visualizing the 6-step framework for tackling any ambiguous system design interview problem.",
         "data": {
-            "type": "excalidraw",
-            "version": 2,
-            "elements": [
-                {
-                    "type": "rectangle",
-                    "x": 50,
-                    "y": 100,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#a5d8ff",
-                    "strokeColor": "#1971c2",
-                    "label": "1. Requirements"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 300,
-                    "y": 100,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#b2f2bb",
-                    "strokeColor": "#2f9e44",
-                    "label": "2. Core Entities"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 550,
-                    "y": 100,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#ffec99",
-                    "strokeColor": "#e67700",
-                    "label": "3. API Design"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 50,
-                    "y": 220,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#d0bfff",
-                    "strokeColor": "#7048e8",
-                    "label": "4. Data Flow (opt)"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 300,
-                    "y": 220,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#ffc9c9",
-                    "strokeColor": "#e03131",
-                    "label": "5. High-Level Design"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 550,
-                    "y": 220,
-                    "width": 200,
-                    "height": 60,
-                    "backgroundColor": "#ff8787",
-                    "strokeColor": "#c92a2a",
-                    "label": "6. Deep Dives"
-                },
-                {
-                    "type": "arrow",
-                    "x": 250,
-                    "y": 130,
-                    "endX": 300,
-                    "endY": 130
-                },
-                {
-                    "type": "arrow",
-                    "x": 500,
-                    "y": 130,
-                    "endX": 550,
-                    "endY": 130
-                },
-                {
-                    "type": "arrow",
-                    "x": 150,
-                    "y": 160,
-                    "endX": 150,
-                    "endY": 220
-                },
-                {
-                    "type": "arrow",
-                    "x": 250,
-                    "y": 250,
-                    "endX": 300,
-                    "endY": 250
-                },
-                {
-                    "type": "arrow",
-                    "x": 500,
-                    "y": 250,
-                    "endX": 550,
-                    "endY": 250
-                }
-            ]
+            "mermaid_source": "graph TD\n  S1[1. Understand the Problem & Scope] --> S2[2. Define the API & Data Model]\n  S2 --> S3[3. High Level Design Architecture]\n  S3 --> S4[4. Component Deep Dive]\n  S4 --> S5[5. Identify Bottlenecks & Scale]\n  S5 --> S6[6. Wrap Up & Tradeoffs]\n  \n  S4 -.->|Refine APIs| S2\n  S5 -.->|Add Caching/Sharding| S3\n  \n  style S1 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style S3 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style S5 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  \n  classDef default fill:#1a1a1a,stroke:#444,stroke-width:1px,color:#ddd;"
         }
     },
     "references": [

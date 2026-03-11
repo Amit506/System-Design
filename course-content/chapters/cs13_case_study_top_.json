@@ -1,0 +1,109 @@
+{
+    "id": "cs13",
+    "title": "Case Study: Top K / Trending Topics",
+    "parent_id": null,
+    "order": 30,
+    "tags": [
+        "case-study",
+        "top-k",
+        "heavy-hitters",
+        "streaming",
+        "count-min-sketch"
+    ],
+    "summary": "Design a real-time 'Trending Topics' or 'Heavy Hitters' system capable of monitoring an infinite stream of 100,000 events per second and instantly identifying the Top 100 most frequent items using probabilistic data structures.",
+    "explanation": {
+        "overview": "Finding the Top 10 most viewed videos of the month is easy: just run a slow SQL `GROUP BY` query overnight. But finding the most viral hashtags on Twitter right *now* from a firehose of 100,000 tweets per second is extremely hard. Holding a hash map in RAM for every single distinct word tweeted globally will instantly exhaust all memory (O(N) space). We must use Approximate Space-Saving Algorithms to trade a highly acceptable 1% margin of error for a 99% reduction in RAM usage.",
+        "how_it_works_internally": "INTERNAL Mechanics: The industry-standard architecture pairs Apache Kafka Stream Processors with a Count-Min Sketch (CMS). A CMS is a probabilistic 2D array of integers. When a hashtag arrives, it is passed through 'd' different hash functions, which output 'd' column indices. The counters at those indices in the array are incremented. Because the width of the array is fixed, hash collisions occur. To estimate the frequency of a hashtag, we hash it again and return the *minimum* value of those collided counters, ensuring we never underestimate, only slightly overestimate. Finally, each stream processor maintains a local Min-Heap of the top 100 items it has seen. A central aggregator periodically merges these heaps to present the final global dashboard.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "Stream Ingestion",
+                "detail": "Events (e.g., 'Video_Watched_ID:555') hit API Gateways and are thrown into a partitioned Kafka Topic instantly, ensuring zero data loss during traffic spikes."
+            },
+            {
+                "step": 2,
+                "title": "Probabilistic Counting",
+                "detail": "Stream Processors (Flink/Spark) pull events. Instead of a `dict[id] += 1` (which OOMs), the ID is fed into the Count-Min Sketch matrix, incrementing the hashed buckets."
+            },
+            {
+                "step": 3,
+                "title": "Local Top K Heap",
+                "detail": "Every time the CMS is updated, the processor asks the CMS for the estimated count. If the count is larger than the smallest item in the processor's local Top K Min-Heap (size 100), the heap is updated."
+            },
+            {
+                "step": 4,
+                "title": "Global Aggregation",
+                "detail": "Every 5 seconds, all 50 Stream Processors flush their local Top 100 heaps to a central Redis instance, which reduces them down to the true Global Top 100."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Count-Min Sketch (CMS)",
+                "definition": "INTERNAL: A probabilistic data structure serving as a frequency table of events in a stream. It uses predefined RAM (e.g., 2MB) regardless of whether there are 1 thousand or 10 billion distinct items. Errors are strictly overestimations caused by hash collisions."
+            },
+            {
+                "term": "Min-Heap Data Structure",
+                "definition": "A binary tree where the smallest element is always at the root. Perfect for tracking the 'Top K'. If an item's count exceeds the root (the smallest of the 'winners'), we pop the root and insert the new item in O(log K) time."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Count Min Sketch Matrix",
+                "description": "Concrete Python implementation of the CMS update and query logic.",
+                "code": "import mmh3 # MurmurHash3 for fast non-cryptographic hashing\n\nclass CountMinSketch:\n    def __init__(self, width, depth):\n        self.width = width\n        self.depth = depth\n        # Initialize 2D array of zeroes\n        self.table = [[0] * width for _ in range(depth)]\n\n    def add(self, item):\n        for i in range(self.depth):\n            # Use the hash seed 'i' to simulate distinct independent hash functions\n            col = mmh3.hash(str(item), i) % self.width\n            self.table[i][col] += 1\n\n    def estimate(self, item):\n        min_count = float('inf')\n        for i in range(self.depth):\n            col = mmh3.hash(str(item), i) % self.width\n            min_count = min(min_count, self.table[i][col])\n        return min_count"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Java PriorityQueue (Min-Heap) for O(log K) sliding top-K tracking.",
+                "code": "public class TopKTracker {\n    private final int k;\n    // PriorityQueue defaults to Min-Heap in Java\n    private final PriorityQueue<Item> minHeap = new PriorityQueue<>(Comparator.comparingInt(Item::getCount));\n    \n    public synchronized void updateTopK(String id, int estimatedCount) {\n        // Check if item already in heap and update (complex in standard PriorityQueue, but conceptually required)\n        if (minHeap.size() < k) {\n            minHeap.offer(new Item(id, estimatedCount));\n        } else if (estimatedCount > minHeap.peek().getCount()) {\n            minHeap.poll(); // Remove smallest of the winners\n            minHeap.offer(new Item(id, estimatedCount));\n        }\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: Exact vs Approximate Counting",
+                "description": "Evaluating precision metrics.",
+                "code": "OPTION Lossless Hash Map vs OPTION Count-Min Sketch\n---------------------------------------------------\nPros Hash Map: 100% mathematical accuracy. \nCons Hash Map: Memory scales O(N) with distinct items. To track IPs hitting a global load balancer, 4 billion IPv4 addresses ruins the RAM.\nPros Sketch: Memory scales O(1). You can track 4 billion IPs using exactly 2MB of RAM.\nCons Sketch: Will occasionally declare something a 'Heavy Hitter' because its hash unluckily collided with Justin Bieber's viral hashtag."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Sliding Window Expirations",
+                "code": "try-catch fallback mechanics:\n1. Stale Trend Exception: A CMS only goes up. If an event is popular on Monday, it stays in the CMS forever, preventing Tuesday's trends from surfacing. Mitigated by using a 'Sliding Window'. We instantiate 1 empty CMS perfectly on the hour (e.g., 2:00PM CMS, 3:00PM CMS). To get the trend for the last hour, we read the active CMS. At 4:00 PM, we delete the 2:00 PM CMS from memory entirely."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (CMS Dimensions)",
+            "default": "Depth (d) = 5, Width (w) = 2000.",
+            "effect": "Modify parameter Depth (number of hash functions) to reduce the probability of error. Modify factor Width to reduce the maximum magnitude of the error.",
+            "tradeoff": "Increasing the width demands linearly more memory. Increasing depth demands more memory AND linearly increases the CPU hashing overhead for every single event processed natively."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Offloading processing from database entirely.",
+            "how": "Use MapReduce / Lambda Architecture. The Count-Min Sketch is the 'Speed Layer' providing instantaneous approximations for the UI. Simultaneously, all events drop into S3/Hadoop. A nightly MapReduce job computes the 100% mathematically accurate counts (The 'Batch Layer') and overwrites the UI database, correcting any probabilistic drift."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Top-K Trending / Heavy Hitters Architecture",
+        "description": "Kafka Stream Processors backed by Probabilistic Sketches.",
+        "data": {
+            "mermaid_source": "graph TD\n  Events[100k events/sec] --> API[API Gateway]\n  API --> Kafka[(Kafka Log Topic)]\n  \n  Kafka --> F1[Flink Processor 1]\n  Kafka --> F2[Flink Processor 2]\n  \n  F1 --> CMS1[(Count-Min Sketch 1)]\n  F1 --> Heap1[Local Min-Heap 1]\n  F2 --> CMS2[(Count-Min Sketch 2)]\n  F2 --> Heap2[Local Min-Heap 2]\n  \n  Heap1 -.-> |Push Top 100| Redis[Redis Global Aggregator]\n  Heap2 -.-> |Push Top 100| Redis\n  \n  Redis --> UI[Trending Dashboard]"
+        }
+    },
+    "limitations": [
+        "Distributed Merging: If you stream route event A to Flink Node 1, and event A again to Flink Node 2, neither local heap might break the threshold for A, so it never reaches the global aggregator despite being a global heavy hitter. TWEAK: The Kafka partition MUST be consistently routed by `Hash(Event_ID)`. All instances of Event A must process on the exact same Flink Node.",
+        "Absolute Disregard for the Tail: A CMS is entirely useless at estimating the count of rare items (the long tail), because collisions from heavy hitters will drown them out completely. TWEAK: Do not use CMS for auditing, billing, or precise user analytics."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Apache Flink / Spark Streaming",
+            "details": "State-of-the-art stream processing engines built to consume Kafka logs, apply windowing logic, and manage state in-memory distributed across thousands of worker JVMs."
+        },
+        {
+            "technology": "Redis API (ZREVRANGE)",
+            "details": "Redis Sorted Sets (ZSET) are the perfect data structure for the central aggregator. Stream nodes push their local heaps to Redis using `ZINCRBY`. The UI queries the global top hits instantly using `ZREVRANGE`."
+        }
+    ]
+}

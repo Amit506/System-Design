@@ -1,0 +1,109 @@
+{
+    "id": "cs09",
+    "title": "Case Study: Distributed Cache (Redis / Memcached)",
+    "parent_id": null,
+    "order": 26,
+    "tags": [
+        "case-study",
+        "caching",
+        "redis",
+        "memcached",
+        "high-availability"
+    ],
+    "summary": "Design a highly available distributed caching tier capable of servicing 10 million reads per second with sub-millisecond latency, featuring sharding, replication, and cache eviction.",
+    "explanation": {
+        "overview": "A Distributed Cache is the backbone of modern web architecture. Databases cannot handle 10 million reads per second, but a fleet of RAM-based caching servers can. The challenge is designing the cache to act as a unified, logical cluster so massive datasets can be sharded (partitioned) across hundreds of cheap nodes, while ensuring that if a node explodes, the data isn't lost and the application doesn't crash.",
+        "how_it_works_internally": "INTERNAL Mechanics: The system fundamentally relies on Consistent Hashing or algorithmic sharding (like Redis Cluster's 16,384 Hash Slots). When the App Server tries to fetch `user:item123`, it hashes the key using CRC16 modulo 16384, determining exactly which physical Node holds that data. To ensure High Availability, each Master Node has synchronous or asynchronous Replicas. If Master Node A dies, Redis Sentinel or a Gossip protocol detects the failure, and automatically promotes Replica A1 to become the new Master.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "Cache Aside Patter Initiation",
+                "detail": "App server queries the cache for `User:1`. Cache returns a Miss. App server queries the massive Postgres DB, gets the result, writes it to the Distributed Cache with a TTL (Time To Live), and returns it to the user."
+            },
+            {
+                "step": 2,
+                "title": "Data Partitioning (Sharding)",
+                "detail": "To store 10 Terabytes of hot cache in physical servers that only have 128GB of RAM, the dataset is hashed and spread out smoothly across ~100 Master nodes."
+            },
+            {
+                "step": 3,
+                "title": "Data Eviction (LRU)",
+                "detail": "Cache memory isn't infinite. Once the node hits 128GB, it executes Least Recently Used (LRU) algorithms to selectively delete the oldest, least accessed keys to make room for new DB reads."
+            },
+            {
+                "step": 4,
+                "title": "Persistence",
+                "detail": "While mostly in memory, Redis specifically streams operations to an Append-Only File (AOF) on disk. If the entire cluster power cycles, it can painfully, but successfully, rebuild state from disk."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Thundering Herd / Cache Stampede",
+                "definition": "INTERNAL: A catastrophic event where a highly viewed viral key (e.g., 'Superbowl Score') expires. In that exact millisecond, 50,000 App Servers experience a cache miss and ALL instantly slam the database simultaneously, crashing the database."
+            },
+            {
+                "term": "Consistent Hashing",
+                "definition": "A distributed hashing scheme that avoids complete key reshuffling when a node is added or removed. It maps nodes and keys onto a ring, ensuring minimal data movement during scaling events."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Preventing Cache Stampedes",
+                "description": "Concrete Python code utilizing singleflight / caching mutex locks to prevent the database from melting on expiration.",
+                "code": "import redis\nimport time\n\nr = redis.Redis(host='localhost', port=6379, db=0)\n\ndef fetch_user_data(user_id):\n    val = r.get(f\"user:{user_id}\")\n    if val:\n        return val\n        \n    # Cache Miss: Acquire extremely short-lived lock (Mutex)\n    lock_key = f\"lock:user:{user_id}\"\n    if r.set(lock_key, \"1\", ex=5, nx=True):\n        # We got the lock! Query the slow database\n        db_val = slow_database_query(user_id)\n        # Write back to cache with 1 hour TTL\n        r.set(f\"user:{user_id}\", db_val, ex=3600)\n        r.delete(lock_key)\n        return db_val\n    else:\n        # Someone else is querying the DB. Wait briefly and retry cache.\n        time.sleep(0.05)\n        return fetch_user_data(user_id)"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Production JDK implementation of a Consistent Hashing Ring.",
+                "code": "public class ConsistentHash<T> {\n    // Thread-safe Treemap mimicking the hash ring\n    private final ConcurrentSkipListMap<Integer, T> circle = new ConcurrentSkipListMap<>();\n    \n    public void addNode(T node, int virtualNodes) {\n        for (int i = 0; i < virtualNodes; i++) {\n            circle.put(hash(node.toString() + i), node);\n        }\n    }\n    \n    public T getNode(String key) {\n        if (circle.isEmpty()) return null;\n        int hash = hash(key);\n        if (!circle.containsKey(hash)) {\n            SortedMap<Integer, T> tailMap = circle.tailMap(hash);\n            hash = tailMap.isEmpty() ? circle.firstKey() : tailMap.firstKey();\n        }\n        return circle.get(hash);\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: Memcached vs Redis",
+                "description": "Evaluating which caching technology to adopt.",
+                "code": "OPTION Memcached vs OPTION Redis\n--------------------------------\nPros Memcached: Exceptionally simple, massively multi-threaded string processing.\nCons Memcached: Only supports basic strings, entirely ephemeral (volatile), no replication.\nPros Redis: Rich data structures (Lists, Bitmaps, Sorted Sets), disk persistence, built-in clustering.\nCons Redis: Single threaded (bottlenecks on massive CPU-bound ops), requires careful memory management."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Cache Partitions and Hot Keys.",
+                "code": "try-catch fallback mechanics:\n1. HotKeyException: Justin Bieber's user profile causes massive CPU spikes on Node 45 (because hashing always routes his ID specifically to Node 45). We catch latency alerts and mitigate by introducing 'Local Node Caching' (Guava) inside the App Server itself to shield the Redis Node.\n2. Split Brain: Network divides master and replica. Mitigated by Redis Sentinel requiring a strict Quorum (minimum 3 Sentinel nodes) to verify a master failure before promoting a replica."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (Redis Eviction Policies)",
+            "default": "maxmemory-policy noeviction (Cache throws OOM errors when full).",
+            "effect": "Modify parameter `maxmemory-policy allkeys-lru` to force the cache to intelligently drop the stalest key-value pairs.",
+            "tradeoff": "LRU requires Redis to compute the 'idle time' of every accessed key, adding slight CPU overhead to every single read."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Handling massive write-heavy analytical states.",
+            "how": "Use Write-Behind (Write-Back) Caching. Instead of App Servers writing to the DB and then Cache, they write exclusively to the Cache (very fast). The Cache maintains the dirty state and asynchronously flushes batches of updates to the DB every 5 minutes."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Distributed Caching Master-Replica Architecture",
+        "description": "Shows Consistent Hashing Ring routing traffic to Shard Clusters.",
+        "data": {
+            "mermaid_source": "graph TD\n  App[App Server Fleet] --> Router[Consistent Hash Router]\n  \n  subgraph \"Shard 1 (Keys A-F)\"\n    Router --> M1[Master Node 1]\n    M1 -.-> |Async Copy| R1[Replica Node 1]\n  end\n  \n  subgraph \"Shard 2 (Keys G-P)\"\n    Router --> M2[Master Node 2]\n    M2 -.-> |Async Copy| R2[Replica Node 2]\n  end\n  \n  subgraph \"Shard 3 (Keys Q-Z)\"\n    Router --> M3[Master Node 3]\n    M3 -.-> |Async Copy| R3[Replica Node 3]\n  end\n  \n  Sentinel((Sentinel Cluster)) --> M1\n  Sentinel --> M2\n  Sentinel --> M3"
+        }
+    },
+    "limitations": [
+        "Single-Thread Bottleneck: Redis processes commands on a single thread. Executing an O(N) command like `KEYS *` loops the entire dataset, blocking every other client's request. TWEAK: Completely disable risky commands in prod config via `rename-command KEYS \"\"` and use `SCAN` instead.",
+        "Replication Lag: Cache reads from a replica inherently receive stale data due to async replication delays. TWEAK: For financial primitives, strictly route reads to the Master node."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Redis Cluster",
+            "details": "The industry standard for distributed caching. It abstracts away consistent hashing rings by simply assigning 16,384 slots across the network. If you need to add servers, Cluster resharding moves slots gracefully without taking the cache offline."
+        },
+        {
+            "technology": "Memcached",
+            "details": "The legacy multithreaded caching system. Excellent for pure HTML string caching where you want bare-metal CPU multi-processing, but lacking modern high-availability clustering."
+        }
+    ]
+}

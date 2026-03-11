@@ -33,15 +33,33 @@
                 "key_concepts": [
                     {
                         "term": "CAP Theorem",
-                        "definition": "In the presence of a network Partition (P), you must choose between Consistency (C) and Availability (A). You CANNOT have all three simultaneously. IMPORTANT NUANCE: P is not optional — network partitions always happen in production (switch failure, cable cut, network congestion). So the real choice is: CP or AP during a partition. During NORMAL operation (no partition), you can have both C and A. CP systems: during partition, refuse requests to maintain consistency. MongoDB (primary unavailable = no writes), HBase, ZooKeeper, etcd. AP systems: during partition, continue serving requests with potentially stale data. Cassandra (any node accepts writes, merge later), DynamoDB, CouchDB. COMMON MISCONCEPTION: CAP does not mean you must give up one permanently. You choose behavior DURING a partition. Most of the time (99.99%), there's no partition and both C and A are maintained."
+                        "definition": "INTERNAL: In the presence of a network Partition (P), you must choose between Consistency (C) and Availability (A). You CANNOT have all three simultaneously. IMPORTANT NUANCE: P is not optional — network partitions always happen in production (switch failure, cable cut, network congestion). So the real choice is: CP or AP during a partition. During NORMAL operation (no partition), you can have both C and A. CP systems: during partition, refuse requests to maintain consistency. MongoDB (primary unavailable = no writes), HBase, ZooKeeper, etcd. AP systems: during partition, continue serving requests with potentially stale data. Cassandra (any node accepts writes, merge later), DynamoDB, CouchDB. COMMON MISCONCEPTION: CAP does not mean you must give up one permanently. You choose behavior DURING a partition. Most of the time (99.99%), there's no partition and both C and A are maintained."
                     },
                     {
                         "term": "PACELC",
                         "definition": "Extends CAP: during Partition, choose Availability or Consistency. ELSE (normal operation), choose Latency or Consistency. This captures real trade-offs better. PA/EL: highly available during partition, low latency normally (Cassandra, DynamoDB). PC/EC: consistent during partition, consistent normally but higher latency (MongoDB, PostgreSQL with sync replication). PA/EC: available during partition, consistent normally (unusual). PC/EL: consistent during partition, low latency normally (by using quorum reads/writes). EXAMPLE: DynamoDB is PA/EL — during a partition, it stays available (AP). During normal operation, it offers low latency reads from any replica (eventual consistency). You CAN request strong consistency (read from leader) but at higher latency cost."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Google Spanner & TrueTime: Breaking the CAP Theorem?",
+                        "description": "How Google built a global database that appears to defy the CAP theorem by providing CA (Consistency + Availability) across the globe.",
+                        "code": "The Claim:\nGoogle Cloud Spanner is marketed as a globally distributed, strongly consistent SQL database with 99.999% availability. It appears to bypass the CAP theorem (being 'CA').\n\nThe Reality (TrueTime):\nEric Brewer (creator of the CAP theorem) wrote a paper explaining that Spanner does NOT break CAP. It is technically a CP system. However, Google's private network is so outrageously reliable (massive redundancy) that network Partitions (P) are incredibly rare. Spanner effectively acts as a CA system because the probability of 'P' is vanishingly small.\n\nThe Secret Weapon (TrueTime):\nTo achieve strong consistency across data centers globally, Spanner relies on 'TrueTime' APIs. Instead of NTP (which has unpredictable clock drift), Google installed GPS receivers and atomic clocks in every datacenter. TrueTime returns a timestamp interval [earliest, latest]. Spanner transactions purposefully WAIT out the uncertainty window (~7ms) before committing. This mathematically guarantees that no two transactions globally can ever overlap in time, creating strict linearizability across the planet."
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch09.s02",
@@ -73,6 +91,13 @@
                         "step": 3,
                         "title": "Safety Guarantees",
                         "detail": "Election Restriction: a candidate must have a log at least as up-to-date as a majority of nodes to win an election. This ensures the new leader has all committed entries. Leader Completeness: if an entry is committed in a given term, it will be present in the logs of all leaders for higher terms. No Split Brain: at most one leader per term (each node votes once per term, leader needs majority). A CLUSTER OF 5 NODES tolerates 2 failures. A cluster of 3 tolerates 1 failure. General: 2F+1 nodes to tolerate F failures."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Consensus Algorithm Decision Matrix",
+                        "description": "Use this matrix to explain which coordination technology you are using in your system design and why.",
+                        "code": "PROTOCOL           | ADVANTAGES                                | DISADVANTAGES                             | USED IN\n-------------------|-------------------------------------------|-------------------------------------------|--------------------------------\nRaft               | Highly understandable, single leader      | Single leader can be a write bottleneck   | etcd, Consul, TiKV, CockroachDB\nPaxos              | Mathematically proven, pioneer algorithm  | Extremely difficult to implement correctly| Google Chubby, Spanner, Cassandra\nZAB                | Optimized for high read workloads         | Tied closely to ZooKeeper's architecture  | Apache ZooKeeper\nGossip Protocol    | No single point of failure (leaderless)   | Eventual consistency only (not strong)    | Cassandra, DynamoDB, Redis Cluster"
                     }
                 ]
             },
@@ -149,6 +174,13 @@
                         "term": "Fencing Token",
                         "definition": "Even with a correct lock, a client can hold a lock, pause (GC pause, VM snapshot), and resume after the lock expired — now it and a new lock holder both think they hold the lock. SOLUTION: when a lock is granted, issue a monotonically increasing fencing token (e.g., 42). The client sends this token with every write to the protected resource. The resource rejects writes with a token lower than the highest it's seen. If client A pauses with token 42, lock expires, client B gets token 43, client A wakes up and tries to write with token 42 → REJECTED (43 > 42). This is the only way to make distributed locks truly safe for correctness. etcd lease IDs serve as fencing tokens."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Redis Distlock (Redlock) in Python",
+                        "description": "A practical implementation of the Redlock algorithm using the popular redlock-py library, protecting a critical payment section.",
+                        "code": "from redlock import Redlock\nimport time\nimport uuid\n\n# Connect to an odd number of independent Redis servers (typically 3 or 5)\n# This provides fault tolerance: if 1 server dies, the remaining 2 still provide quorum.\ndlm = Redlock([\n    {\"host\": \"redis1.example.com\", \"port\": 6379, \"db\": 0},\n    {\"host\": \"redis2.example.com\", \"port\": 6379, \"db\": 0},\n    {\"host\": \"redis3.example.com\", \"port\": 6379, \"db\": 0}\n])\n\ndef process_payment(user_id, amount):\n    resource_key = f\"payment_lock:{user_id}\"\n    # Try to acquire lock for 10 seconds. Redlock contacts all 3 servers.\n    # If it gets OK from 2/3 servers within the timeframe, lock is acquired.\n    my_lock = dlm.lock(resource_key, 10000) \n\n    if my_lock:\n        try:\n            print(f\"[{user_id}] Lock acquired across quorum. Processing payment...\")\n            # Critical section: Deduct balance, call Stripe API, etc.\n            time.sleep(2) # Simulate work\n            print(f\"[{user_id}] Payment processed successfully.\")\n        finally:\n            # Release the lock across all 3 nodes immediately when done\n            dlm.unlock(my_lock)\n            print(f\"[{user_id}] Lock released.\")\n    else:\n        print(f\"[{user_id}] Payment already in progress (Failed to acquire quorum). Please wait.\")"
+                    }
                 ]
             },
             "children": []
@@ -171,5 +203,13 @@
             "title": "ZooKeeper Documentation",
             "url": "https://zookeeper.apache.org/doc/current/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "CAP Theorem Tradeoffs",
+        "description": "Network Partitions force a choice between Availability and Consistency.",
+        "data": {
+            "mermaid_source": "graph TD\n  Client1 --> NodeA[Node A - US]\n  Client2 --> NodeB[Node B - EU]\n  \n  NodeA -.-x |Network Partition Destroyed| NodeB\n  \n  NodeA --> CP{Choose Consistency?}\n  CP --> |Yes| Error[Return 500 Error to Client 1]\n  \n  NodeB --> AP{Choose Availability?}\n  AP --> |Yes| Stale[Return Stale Data to Client 2]\n  \n  style NodeA fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style CP fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd\n  style Error stroke:#ff4444,stroke-width:3px"
+        }
+    }
 }

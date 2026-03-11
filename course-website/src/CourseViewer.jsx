@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Lightbulb, GitMerge, AlertTriangle, CheckCircle, Target, Database, FileText } from 'lucide-react';
+import { Layers, Lightbulb, GitMerge, AlertTriangle, CheckCircle, Target, Database, FileText, XOctagon } from 'lucide-react';
 import MermaidRenderer from './MermaidRenderer';
 
 function SectionCard({ title, icon: Icon, children, className = '' }) {
@@ -33,7 +33,7 @@ export default function CourseViewer({ activeDoc }) {
         );
     }
 
-    const { explanation, tags, summary, diagram, configurable_params, advanced_tweaks, common_mistakes, tradeoffs, interview_tips, references } = activeDoc;
+    const { explanation, tags, summary, diagram, configurable_params, advanced_tweaks, common_mistakes, tradeoffs, limitations, interview_tips, references } = activeDoc;
 
     return (
         <main className="main-content styled-scroll">
@@ -67,7 +67,7 @@ export default function CourseViewer({ activeDoc }) {
                             {diagram.description && <p className="text-muted mb-4">{diagram.description}</p>}
                             <div className="diagram-wrapper glass-panel p-2 rounded-xl border-subtle relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-2"><span className="text-xs font-mono text-muted bg-dark rounded px-2">MERMAID (LIVE)</span></div>
-                                <MermaidRenderer chart={diagram.data} />
+                                <MermaidRenderer chart={diagram.data?.mermaid_source || diagram.data} />
                             </div>
                         </div>
                     )}
@@ -76,10 +76,19 @@ export default function CourseViewer({ activeDoc }) {
                         <div className="diagram-section my-12">
                             <h3 className="section-title flex items-center gap-2"><Layers size={20} className="text-gold" /> Visual Architecture</h3>
                             {diagram.description && <p className="text-muted mb-4">{diagram.description}</p>}
-                            <div className="diagram-wrapper glass-panel p-8 text-center rounded-xl border-dashed border-gold-subtle flex flex-col items-center justify-center min-h-[200px]">
-                                <Layers size={32} className="text-gold opacity-50 mb-3" />
-                                <span className="text-sm font-mono text-gold">[ Excalidraw Render Output ]</span>
-                                <span className="text-xs text-muted mt-2">Diagram: {diagram.title}</span>
+                            <div className="diagram-wrapper glass-panel p-10 text-center rounded-xl border-2 border-dashed border-gold/30 flex flex-col items-center justify-center min-h-[260px] bg-gold/5">
+                                <div className="bg-dark/80 p-4 rounded-full mb-4 border border-gold/20">
+                                    <Layers size={40} className="text-gold animate-pulse" />
+                                </div>
+                                <h4 className="text-lg font-bold text-gold mb-1">{diagram.title}</h4>
+                                <span className="text-sm font-medium text-muted mb-4 px-6 max-w-md">The high-fidelity Excalidraw version of this diagram is currently being rendered.</span>
+                                <div className="flex items-center gap-2 px-3 py-1 bg-gold/10 rounded-full border border-gold/20">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-gold"></span>
+                                    </span>
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-gold">Renderer Pending</span>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -118,6 +127,27 @@ export default function CourseViewer({ activeDoc }) {
                         </div>
                     )}
 
+                    {explanation?.examples && (
+                        <div className="examples-section my-12">
+                            <h3 className="section-title mb-6 flex items-center gap-2"><FileText size={20} className="text-gold" /> Code Examples & Use Cases</h3>
+                            <div className="examples-grid grid gap-6">
+                                {explanation.examples.map((ex, idx) => (
+                                    <div key={idx} className="example-card bg-dark/60 border border-subtle rounded-xl overflow-hidden">
+                                        <div className="example-header bg-panel p-4 border-b border-subtle">
+                                            <h4 className="font-bold text-light text-lg">{ex.title}</h4>
+                                            {ex.description && <p className="text-sm text-muted mt-1">{ex.description}</p>}
+                                        </div>
+                                        {ex.code && (
+                                            <div className="example-code p-4 overflow-x-auto">
+                                                <pre className="text-sm font-mono text-cyan-300"><code>{ex.code}</code></pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="split-grid grid gap-8 md:grid-cols-2 my-10">
                         {tradeoffs && tradeoffs.length > 0 && (
                             <SectionCard title="Technical Trade-offs" icon={GitMerge} className="tradeoffs-card">
@@ -134,6 +164,19 @@ export default function CourseViewer({ activeDoc }) {
                             </SectionCard>
                         )}
                     </div>
+                    
+                    {limitations && limitations.length > 0 && (
+                        <SectionCard title="System Limitations & Hard Truths" icon={XOctagon} className="limitations-card my-10 border-orange-subtle bg-gradient-to-br from-panel to-orange-900/10">
+                            <ul className="premium-list space-y-3">
+                                {limitations.map((item, i) => (
+                                    <li key={i} className="flex font-medium items-start p-3 bg-dark/40 rounded-lg">
+                                        <XOctagon size={16} className="text-orange-400 mr-3 flex-shrink-0 mt-0.5" />
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </SectionCard>
+                    )}
 
                     {configurable_params && configurable_params.length > 0 && (
                         <SectionCard title="Production Tuning" icon={Lightbulb} className="my-10">

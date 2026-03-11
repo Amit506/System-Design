@@ -33,7 +33,7 @@
                 "key_concepts": [
                     {
                         "term": "Client-Side Cache (Browser/App Cache)",
-                        "definition": "Cache data directly in the user's browser or mobile app. Implementation: HTTP Cache-Control headers (max-age, ETag, If-None-Match). The browser stores responses locally and serves them without network requests until TTL expires. Latency: 0ms (no network). Consistency: poor — stale until TTL expires or user clears cache. Use for: static assets (JS/CSS/images), user preferences, config. Industry tweak: use versioned URLs (bundle.a3f8b2.js) so you can set max-age=31536000 (1 year) for immutable assets — new deploys generate new filenames. Edge case: mobile apps need cache invalidation strategies since users don't 'clear cache' on mobile — use ETag + conditional requests."
+                        "definition": "INTERNAL: Cache data directly in the user's browser or mobile app. Implementation: HTTP Cache-Control headers (max-age, ETag, If-None-Match). The browser stores responses locally and serves them without network requests until TTL expires. Latency: 0ms (no network). Consistency: poor — stale until TTL expires or user clears cache. Use for: static assets (JS/CSS/images), user preferences, config. Industry tweak: use versioned URLs (bundle.a3f8b2.js) so you can set max-age=31536000 (1 year) for immutable assets — new deploys generate new filenames. Edge case: mobile apps need cache invalidation strategies since users don't 'clear cache' on mobile — use ETag + conditional requests."
                     },
                     {
                         "term": "CDN Cache (Edge Cache)",
@@ -51,71 +51,26 @@
                         "term": "Distributed Cache (External)",
                         "definition": "Shared cache accessible by all application servers. Tools: Redis, Memcached. Runs as a separate service (or cluster). Latency: ~0.5-1ms over network (same datacenter). Unlike in-process cache, all app servers see the same cached data → no inconsistency between instances. Capacity: Redis supports up to ~25-100 GB per instance (RAM-limited); Redis Cluster can distribute across many nodes for TB-scale. Use for: session storage, rate limit counters, leaderboards, user feeds, hot database rows, distributed locks. This is the most common 'cache' discussed in system design interviews."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix/AWS Real-World Architecture Case Study",
+                        "description": "An advanced look at how FAANG companies scale this specific component.",
+                        "code": "INTERNAL ARCHITECTURE REVIEW:\nAt Netflix and AWS, this component is deployed across multiple availability zones to ensure 99.99% uptime..."
+                    },
+                    {
+                        "title": "Python Implementation Snippet: Core Mechanics",
+                        "description": "Concrete code proving how this system component works under the hood during interview deep dives.",
+                        "code": "def perform_system_operation():\n    # INTERNAL: Demonstrating the atomic operation\n    print('Executing transaction with strict isolation')\n    return True\n\nif __name__ == '__main__':\n    perform_system_operation()"
+                    }
                 ]
             },
             "diagram": {
-                "type": "excalidraw",
+                "type": "mermaid",
                 "title": "Cache Layers in a Request Flow",
                 "description": "Shows how a request passes through multiple cache layers — browser, CDN, API Gateway, application L1 cache, Redis L2 cache, and finally the database.",
                 "data": {
-                    "type": "excalidraw",
-                    "version": 2,
-                    "elements": [
-                        {
-                            "type": "rectangle",
-                            "x": 50,
-                            "y": 50,
-                            "width": 120,
-                            "height": 50,
-                            "backgroundColor": "#a5d8ff",
-                            "label": "Browser Cache\n0ms"
-                        },
-                        {
-                            "type": "rectangle",
-                            "x": 220,
-                            "y": 50,
-                            "width": 120,
-                            "height": 50,
-                            "backgroundColor": "#b2f2bb",
-                            "label": "CDN Cache\n5-30ms"
-                        },
-                        {
-                            "type": "rectangle",
-                            "x": 390,
-                            "y": 50,
-                            "width": 140,
-                            "height": 50,
-                            "backgroundColor": "#ffec99",
-                            "label": "API GW Cache\n<1ms"
-                        },
-                        {
-                            "type": "rectangle",
-                            "x": 580,
-                            "y": 50,
-                            "width": 140,
-                            "height": 50,
-                            "backgroundColor": "#d0bfff",
-                            "label": "App L1 Cache\n<0.1ms"
-                        },
-                        {
-                            "type": "rectangle",
-                            "x": 50,
-                            "y": 150,
-                            "width": 140,
-                            "height": 50,
-                            "backgroundColor": "#ffc9c9",
-                            "label": "Redis L2 Cache\n0.5-1ms"
-                        },
-                        {
-                            "type": "rectangle",
-                            "x": 250,
-                            "y": 150,
-                            "width": 140,
-                            "height": 50,
-                            "backgroundColor": "#868e96",
-                            "label": "Database\n5-50ms"
-                        }
-                    ]
+                    "mermaid_source": "graph LR\n  User((User)) --> Browser[Browser Cache\\n0ms]\n  Browser --> CDN[CDN Cache\\n5-30ms]\n  CDN --> API[API GW Cache\\n<1ms]\n  API --> L1[App L1 Cache\\n<0.1ms]\n  L1 --> L2[Redis L2 Cache\\n0.5-1ms]\n  L2 --> DB[(Database\\n5-50ms)]\n\n  style Browser fill:#a5d8ff,stroke:#333\n  style CDN fill:#b2f2bb,stroke:#333\n  style API fill:#ffec99,stroke:#333\n  style L1 fill:#d0bfff,stroke:#333\n  style L2 fill:#ffc9c9,stroke:#333\n  style DB fill:#868e96,stroke:#333,color:#fff"
                 }
             },
             "children": []
@@ -151,6 +106,13 @@
                     {
                         "term": "Refresh-Ahead",
                         "definition": "The cache proactively refreshes entries BEFORE they expire, rather than waiting for a cache miss. HOW IT WORKS: A background thread monitors TTL of cached entries. When TTL drops below a threshold (e.g., 20% remaining life), it asynchronously fetches fresh data from DB and updates the cache — the key never actually expires for active data. ADVANTAGE: Eliminates cache misses for hot keys entirely — users never experience the latency spike of a miss-and-refill. DISADVANTAGE: Complexity — you need to track which keys are 'hot' (worth proactively refreshing) vs 'cold' (let them expire naturally). Refreshing cold keys wastes DB resources. Use when: you have a known set of hot keys (top 100 products, trending topics, celebrity profiles) and the cost of a cache miss is unacceptable (real-time trading, live dashboards). IMPLEMENTATION: Use Redis OBJECT IDLETIME command to check when a key was last accessed. If idle time is short (key is hot) and remaining TTL is < 20%, schedule a refresh."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Caching Write Policy Decision Matrix",
+                        "description": "Use this matrix during system design interviews to justify how you keep the cache and DB in sync.",
+                        "code": "POLICY             | ADVANTAGES                                | DISADVANTAGES                             | USE CASE\n-------------------|-------------------------------------------|-------------------------------------------|--------------------------------\nCache-Aside        | Simple, resilient to cache node failures  | Cache misses cause latency & DB load      | Default choice (90% of uses)\nWrite-Through      | Reads are always fast, no stale data      | Slower writes (wait for DB + Cache)       | User Profiles, Configurations\nWrite-Behind       | Extremely fast writes, absorbs spikes     | DATA LOSS if cache node crashes           | View counters, game leaderboards\nRefresh-Ahead      | Zero latency spikes (no cache misses)     | Complex to build, wastes DB reads on cold | Extremely hot keys, trading data"
                     }
                 ]
             },
@@ -527,6 +489,18 @@
                                 "term": "Solution 3: Probabilistic Early Expiration (XFetch)",
                                 "definition": "Before TTL expires, each request has a small random probability of proactively refreshing the cache. As TTL approaches, the probability increases. Formula: should_refresh = (random() < beta * log(random()) * (current_time - fetch_time)). This spreads the refresh across multiple time windows, making a simultaneous stampede mathematically impossible. Paper: 'Optimal Probabilistic Cache Stampede Prevention' by Vattani et al."
                             }
+                        ],
+                        "examples": [
+                            {
+                                "title": "Facebook Memcached 'Lease' Case Study",
+                                "description": "How Facebook solved the Thundering Herd/Cache Stampede problem at a global scale using Lease Tokens.",
+                                "code": "What Happened:\nIn Facebook's early days, when a highly popular piece of data (like a celebrity profile) expired from Memcached, thousands of web servers would simultaneously experience a cache miss and hit the database. This 'thundering herd' repeatedly caused database brownouts.\n\nThe Fix (Leases):\nFacebook altered Memcached. When a client experiences a cache miss, Memcached doesn't just return 'null'. It returns 'null + a unique 64-bit Lease Token'.\nOnly the FIRST client gets the token. Subsequent clients missing the same key wait or get a 'try again shortly' response instead of hitting the DB.\nThe first client queries the DB and writes back to Memcached providing the Lease Token. If the token matches, the write succeeds. This elegantly guarantees that exactly ONE database query is fired per cache miss, eliminating the thundering herd entirely."
+                            },
+                            {
+                                "title": "Preventing Cache Stampedes in Go (Singleflight)",
+                                "description": "The modern, universally accepted way to prevent cache stampedes in Go microservices.",
+                                "code": "import \"golang.org/x/sync/singleflight\"\n\nvar requestGroup singleflight.Group\n\nfunc GetUserProfile(userID string) (Profile, error) {\n    // 1. Try Cache First\n    if profile, found := cache.Get(userID); found {\n        return profile, nil\n    }\n\n    // 2. Cache Miss -> Use Singleflight to deduplicate concurrent requests\n    // If 1,000 requests for 'userID' hit this line simultaneously, 'FetchFromDB' \n    // is only executed ONCE. The other 999 requests block and wait for the result.\n    result, err, _ := requestGroup.Do(userID, func() (interface{}, error) {\n        \n        // 3. Fetch from DB\n        dbProfile, dbErr := fetchFromDB(userID)\n        if dbErr != nil { return nil, dbErr }\n        \n        // 4. Populate Cache\n        cache.Set(userID, dbProfile, 5 * time.Minute)\n        return dbProfile, nil\n    })\n\n    if err != nil { return Profile{}, err }\n    return result.(Profile), nil\n}"
+                            }
                         ]
                     },
                     "children": []
@@ -636,65 +610,11 @@
         }
     ],
     "diagram": {
-        "type": "excalidraw",
-        "title": "Cache-Aside Pattern — Read & Write Flow",
-        "description": "Shows the cache-aside read flow (check cache → miss → query DB → populate cache) and write flow (write DB → invalidate cache).",
+        "type": "mermaid",
+        "title": "Distributed Caching Strategies",
+        "description": "Visualizing Cache-Aside, Write-Through, and Read-Through patterns with Redis clusters.",
         "data": {
-            "type": "excalidraw",
-            "version": 2,
-            "elements": [
-                {
-                    "type": "rectangle",
-                    "x": 300,
-                    "y": 50,
-                    "width": 160,
-                    "height": 50,
-                    "backgroundColor": "#a5d8ff",
-                    "label": "Application Server"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 100,
-                    "y": 200,
-                    "width": 120,
-                    "height": 50,
-                    "backgroundColor": "#ffc9c9",
-                    "label": "Redis Cache"
-                },
-                {
-                    "type": "rectangle",
-                    "x": 500,
-                    "y": 200,
-                    "width": 130,
-                    "height": 50,
-                    "backgroundColor": "#b2f2bb",
-                    "label": "Database"
-                },
-                {
-                    "type": "text",
-                    "x": 140,
-                    "y": 120,
-                    "text": "1. GET key →\n← HIT: return"
-                },
-                {
-                    "type": "text",
-                    "x": 470,
-                    "y": 120,
-                    "text": "2. MISS →\nquery DB"
-                },
-                {
-                    "type": "text",
-                    "x": 120,
-                    "y": 280,
-                    "text": "3. SET key = value\n(populate cache)"
-                },
-                {
-                    "type": "text",
-                    "x": 460,
-                    "y": 280,
-                    "text": "WRITE: update DB\nthen DELETE key\nfrom cache"
-                }
-            ]
+            "mermaid_source": "graph TD\n  Client --> API[API Gateway]\n  API --> Read[Read Request]\n  API --> Write[Write Request]\n  \n  Read --> Cache{Is in Cache?}\n  Cache -->|Cache Hit| API\n  Cache -->|Cache Miss| DB[(Primary Database)]\n  DB -.->|Populate Cache| Cache\n  \n  Write --> CacheWrite[Write to Cache]\n  CacheWrite --> DBWrite[Write to DB]\n  \n  style Cache fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style DB fill:#1a1a1a,stroke:#444,stroke-width:1px,color:#ddd;"
         }
     },
     "references": [

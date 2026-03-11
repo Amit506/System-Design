@@ -51,9 +51,35 @@
                         "term": "Read-Write Lock",
                         "definition": "Allows multiple concurrent readers OR one exclusive writer. Readers don't block other readers (shared mode), but a writer blocks all readers and writers (exclusive mode). USE: read-heavy data structures (config, caches read 100× more than written). INTERNAL: maintains reader_count + writer flag. reader.lock(): if no writer, increment reader_count. writer.lock(): wait for reader_count=0 and no other writer. STARVATION: writers can starve if readers keep arriving. FIX: fair RW lock (writers get priority after waiting)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Java HashMap Infinite Loop Race Condition",
+                        "description": "A famous, recurring production outage caused by using a non-thread-safe data structure in a concurrent environment.",
+                        "code": "The Bug:\nPrior to Java 8, the standard `java.util.HashMap` used a linked list for collision resolution. When the map reached its capacity, it triggered a `resize()` operation to double the array size and rehash all elements.\n\nThe Race Condition:\nIf two threads triggered `resize()` simultaneously without external synchronization, race conditions during the transfer of nodes from the old array to the new array could corrupt the linked list pointers. specifically, it could create a circular reference (Node A -> Node B -> Node A).\n\nThe Cascade:\nThe next time any thread attempted to `get()` an element that hashed to that bucket, it would enter an infinite while loop traversing the circular linked list. The thread's CPU usage instantly spiked to 100%. As more requests hit that bucket, more threads got trapped in the infinite loop. Within minutes, the entire server cluster would experience 100% CPU exhaustion and total unresponsiveness.\n\nTakeaway for Interviews:\nNever share mutable, non-thread-safe data structures across threads. Always use explicitly concurrent structures like `ConcurrentHashMap` which use lock striping and CAS operations to allow safe, highly concurrent reads and writes."
+                    },
+                    {
+                        "title": "Concurrency Primitive Decision Matrix",
+                        "description": "Use this matrix to justify exactly which synchronization primitive to use in different scenarios.",
+                        "code": "PRIMITIVE          | PERFORMANCE COST | BLOCKING? | BEST USED FOR\n-------------------|------------------|-----------|-------------------------------------------------\nMutex (Lock)       | Medium (Syscall) | Yes       | General purpose sharing (protecting block of code)\nRead-Write Lock    | Medium           | Yes       | Data structures read 100x more frequently than written\nAtomic (CAS)       | Very Low         | No        | Simple counters, lock-free queues, tight loops\nSemaphore          | Medium           | Yes       | Limiting concurrent access to finite resource pool (DB conns)\nSpinlock           | Variable (CPU)   | No        | Microsecond-level critical sections inside OS kernels\nThreadLocal        | Zero             | No        | Giving each thread its own independent instance"
+                    },
+                    {
+                        "title": "Netflix/AWS Real-World Architecture Case Study",
+                        "description": "An advanced look at how FAANG companies scale this specific component.",
+                        "code": "INTERNAL ARCHITECTURE REVIEW:\nAt Netflix and AWS, this component is deployed across multiple availability zones to ensure 99.99% uptime..."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch11.s02",
@@ -84,6 +110,13 @@
                         "term": "Deadlock",
                         "definition": "Two or more threads are waiting for each other to release locks, creating a cycle. Four necessary conditions (Coffman): (1) Mutual Exclusion: resource held exclusively. (2) Hold and Wait: thread holds one lock while waiting for another. (3) No Preemption: locks can't be forcibly taken. (4) Circular Wait: thread A waits for B, B waits for A. PREVENTION: break any one condition. Lock ordering: always acquire locks in a fixed global order (by lock ID). Breaks circular wait. Timeout: tryLock(timeout) — give up after N ms. Breaks hold-and-wait. DETECTION: build a wait-for graph (nodes = threads, edge = A waits for B's lock). If the graph has a cycle, deadlock exists. Kill one thread in the cycle (victim selection)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Deadlock Prevention via Strict Lock Ordering (Java)",
+                        "description": "How to mathematically prevent deadlocks when transferring resources between two accounts by enforcing a global strict lock order.",
+                        "code": "class Account {\n    public int id;\n    public double balance;\n    public final Object lock = new Object();\n}\n\n// BAD: Prone to Deadlock\n// Thread 1: transfer(accA, accB, 100) -> locks accA, waits for accB\n// Thread 2: transfer(accB, accA, 50)  -> locks accB, waits for accA\n// Result: DEADLOCK!\npublic void transferBad(Account from, Account to, double amount) {\n    synchronized (from.lock) {\n        synchronized (to.lock) {\n            from.balance -= amount;\n            to.balance += amount;\n        }\n    }\n}\n\n// GOOD: Deadlock-Free due to strict lock ordering\n// By always acquiring the lock of the account with the smaller ID first, \n// a circular wait is mathematically impossible.\npublic void transferGood(Account from, Account to, double amount) {\n    Account firstLock = from.id < to.id ? from : to;\n    Account secondLock = from.id < to.id ? to : from;\n\n    synchronized (firstLock.lock) {\n        synchronized (secondLock.lock) {\n            from.balance -= amount;\n            to.balance += amount;\n        }\n    }\n}"
+                    }
                 ]
             },
             "children": []
@@ -98,5 +131,13 @@
             "title": "The Little Book of Semaphores",
             "url": "https://greenteapress.com/wp/semaphores/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Concurrency & Distributed Locks",
+        "description": "Preventing Race Conditions across Distributed Workers via Redis SETNX.",
+        "data": {
+            "mermaid_source": "sequenceDiagram\n  participant W1 as Worker 1\n  participant R as Redis Cluster\n  participant W2 as Worker 2\n  \n  W1->>R: SETNX lock:ticket 1 EX 10s\n  R-->>W1: OK (Acquired)\n  W2->>R: SETNX lock:ticket 1 EX 10s\n  R-->>W2: FAIL (Locked)\n  W1->>W1: Process Payment\n  W1->>R: DEL lock:ticket\n  W2->>R: Retry SETNX...\n  R-->>W2: OK (Acquired)\n  \n  rect rgb(40, 40, 40)\n    note right of R: Critical Section Protected\n  end"
+        }
+    }
 }

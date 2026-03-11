@@ -1,0 +1,108 @@
+{
+    "id": "cs02",
+    "title": "Case Study: Distributed Web Crawler (Googlebot)",
+    "parent_id": null,
+    "order": 19,
+    "tags": [
+        "case-study",
+        "web-crawler",
+        "bfs",
+        "distributed"
+    ],
+    "summary": "Design a highly scalable web crawler capable of downloading and indexing billions of web pages per month while respecting robots.txt and avoiding spider traps.",
+    "explanation": {
+        "overview": "A web crawler continuously traverses the internet to download web pages for search engines, archives, or data mining. The core algorithm is a distributed Breadth-First Search (BFS). You start with seed URLs, download the pages, extract links, filter out visited URLs, and add new ones to the queue.",
+        "how_it_works_internally": "INTERNAL Mechanics: The system relies on a massively distributed URL Frontier (a priority queue). Worker nodes pull URLs from the Frontier, resolve DNS, fetch HTML, parse it, and extract links. A Bloom Filter checks if a newly found URL has already been visited (we can't use a standard hash set for billions of URLs as it would consume terabytes of RAM). Valid, unvisited links are appended back to the Frontier. The parsed HTML content is streamed to an object store (S3) or BigTable for indexing.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "URL Frontier Queueing",
+                "detail": "The Frontier prioritizes URLs based on PageRank, freshness, and domain limits to avoid DDoSing a specific site (politeness)."
+            },
+            {
+                "step": 2,
+                "title": "DNS Resolution & Caching",
+                "detail": "Standard DNS lookups take 10-100ms. A crawler making 10,000 requests/sec will bottleneck hard on DNS. We must use a custom, highly cached DNS resolver."
+            },
+            {
+                "step": 3,
+                "title": "HTML Fetcher & Parser",
+                "detail": "Fetches the page content. A dedicated parser checks for malicious content, spider traps (infinite dynamic links like `/page/1/page/2`), and extracts out-links."
+            },
+            {
+                "step": 4,
+                "title": "Content Duplication Check (MinHash)",
+                "detail": "30% of the web is duplicate content. We use Simhash/MinHash to generate a document fingerprint. If the fingerprint matches an existing one, we discard the page to save storage."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Spider Traps",
+                "definition": "INTERNAL: Infinite loops created by dynamic web pages (e.g., recursive calendars). Handled by setting a strict max-depth limit on URLs or using ML algorithms to detect repetitive URL patterns."
+            },
+            {
+                "term": "Politeness Mechanism",
+                "definition": "Crawlers must never overwhelm a site. The URL Frontier maintains separate queues per domain and ensures a delay (e.g., 5 seconds) between fetches to the same domain."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Distributed Bloom Filter Check",
+                "description": "Concrete Python code proving how to check visited URLs without exhausting memory.",
+                "code": "import mmh3\nfrom bitarray import bitarray\n\nclass BloomFilter:\n    def __init__(self, size, hash_count):\n        self.size = size\n        self.hash_count = hash_count\n        self.bit_array = bitarray(size)\n        self.bit_array.setall(0)\n        \n    def add(self, item):\n        for i in range(self.hash_count):\n            digest = mmh3.hash(item, i) % self.size\n            self.bit_array[digest] = 1\n            \n    def check(self, item):\n        for i in range(self.hash_count):\n            digest = mmh3.hash(item, i) % self.size\n            if self.bit_array[digest] == 0:\n                return False\n        return True"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Production JDK 21 Virtual Threads demonstrating high-concurrency HTML fetching.",
+                "code": "public class CrawlerWorker {\n    public static void executeFetch(List<String> urls) {\n        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {\n            for (String url : urls) {\n                executor.submit(() -> {\n                    // Thread-safe fetch with Virtual Threads allowing 100k+ concurrent connections\n                    String content = HttpClient.fetch(url);\n                    System.out.println(\"Fetched: \" + url);\n                });\n            }\n        }\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: BFS vs DFS",
+                "description": "Evaluating search algorithms for web traversal.",
+                "code": "OPTION Breadth-First (BFS) vs OPTION Depth-First (DFS)\n----------------------------------------------------\nPros BFS: Highly parallelizable, naturally finds shortest paths to high-quality domains.\nCons BFS: Requires massive memory for the frontier queue.\nPros DFS: Low memory overhead.\nCons DFS: Easily gets stuck in infinite deep links / spider traps. (Hence BFS is the industry standard)."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Handling malicious sites and node crashes.",
+                "code": "try-catch fallback mechanics:\n1. SSLException / SSLHandshakeException: Malformed certs are ignored and URL marked failed to prevent blocking native workers.\n2. Node Crash: The Frontier queue uses a transactional semantic (visiting = in-flight). If the node fails to ACK within 60 seconds, the URL is pushed back to the 'to-visit' queue."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (Jsoup parser)",
+            "default": "Max fetch size = 1MB.",
+            "effect": "Modify parameter `Connection.maxBodySize()` to prevent OOM errors from maliciously large 10GB text files.",
+            "tradeoff": "Truncating HTML means missing links at the bottom of massive wiki pages, but preserves crawler stability."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Maintaining politeness queues efficiently.",
+            "how": "Use Redis Sorted Sets to manage state. The score is the timestamp mapping when a domain is next allowed to be crawled. Workers pop from the top of the sorted set."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Distributed Web Crawler Architecture",
+        "description": "Shows the cyclic graph of downloading, parsing, and feeding URLs back to the Frontier.",
+        "data": {
+            "mermaid_source": "graph TD\n  Seed[Seed URLs] --> Frontier[URL Frontier Queue]\n  Frontier --> |Pop URL| Fetcher[HTML Fetcher Node]\n  Fetcher --> DNS[(DNS Cache)]\n  Fetcher --> Internet((The Web))\n  Internet --> |HTML| Parser[HTML Parser & Extractor]\n  Parser --> DupCheck[Content Dedup / MinHash]\n  DupCheck --> |Unique| Storage[(Document Store S3)]\n  Parser --> |Extract Links| URLFilter[URL Filter & Bloom Filter]\n  URLFilter --> |Unvisited| Frontier\n  style Frontier fill:#ff9900"
+        }
+    },
+    "limitations": [
+        "Hidden Web / Deep Web: Standard crawlers cannot parse content behind login walls, complex CAPTCHAs, or heavily rendered client-side React apps. TWEAK: Deploy headless browsers (Puppeteer/Playwright) for highly valuable dynamic targets, though this drops throughput by 100x.",
+        "DNS Bottlenecks: OS-level DNS is blocking. TWEAK: Implement an asynchronous DNS client in Java/Python overriding the standard library to batch UDP requests."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Kafka",
+            "details": "Used as the underlying URL Frontier. Offers exact-once processing semantics, extreme partition scaling, and disk-backed durability so crashing doesn't lose the unvisited queue."
+        },
+        {
+            "technology": "Redis",
+            "details": "Used for Politeness Queues, domain backoff timers, and tracking active concurrent worker leases per domain."
+        }
+    ]
+}

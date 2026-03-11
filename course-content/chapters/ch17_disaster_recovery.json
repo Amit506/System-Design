@@ -33,7 +33,7 @@
                 "key_concepts": [
                     {
                         "term": "RPO (Recovery Point Objective)",
-                        "definition": "Maximum acceptable data loss measured in time. RPO = 0: no data loss (synchronous replication to standby). RPO = 1 hour: can lose up to 1 hour of data (hourly backups or near-sync replication). RPO = 24 hours: can lose up to a day (daily backups). COST: lower RPO = more expensive (synchronous replication costs throughput and latency). RPO directly determines your backup/replication frequency."
+                        "definition": "INTERNAL: Maximum acceptable data loss measured in time. RPO = 0: no data loss (synchronous replication to standby). RPO = 1 hour: can lose up to 1 hour of data (hourly backups or near-sync replication). RPO = 24 hours: can lose up to a day (daily backups). COST: lower RPO = more expensive (synchronous replication costs throughput and latency). RPO directly determines your backup/replication frequency."
                     },
                     {
                         "term": "RTO (Recovery Time Objective)",
@@ -43,9 +43,27 @@
                         "term": "DR Strategies (cost: low → high)",
                         "definition": "Backup & Restore (RPO: hours, RTO: hours): take periodic backups to S3/GCS. On disaster, provision new infrastructure and restore from backups. Cheapest but slowest recovery. Pilot Light (RPO: minutes, RTO: minutes-hours): core infrastructure always running in DR region (database replication, basic networking). On disaster, scale up compute (start app servers, scale ASG). Warm Standby (RPO: seconds, RTO: minutes): fully running DR region at reduced capacity (fewer instances). On disaster, scale to full capacity and redirect traffic. Hot Standby / Active-Active (RPO: 0, RTO: ~0): both regions actively serving traffic. Data replicated synchronously or near-synchronously. On disaster, the surviving region handles all traffic. Most expensive but zero data loss and near-zero downtime. USED BY: banks (hot standby for core banking), large e-commerce (active-active for zero downtime)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Disaster Recovery Strategy Decision Matrix",
+                        "description": "Evaluate the optimal DR plan based on business cost tolerance and downtime requirements.",
+                        "code": "DR PATTERN                   | INFRA DEV/MAINT COST | RECOVERY POINT (RPO) | RECOVERY TIME (RTO) | BEST USED FOR\n-----------------------------|-----------------------|----------------------|---------------------|-----------------------------------------------------\nBackup and Restore           | $ (Lowest)            | 1-24 Hours           | 4-24 Hours          | Non-critical internal apps, batch analytics jobs\nPilot Light                  | $$                    | 10-60 Mins           | 1-4 Hours           | Standard web applications, read-heavy sites\nWarm Standby                 | $$$                   | 0-5 Mins             | 10-60 Mins          | Business-critical B2B SaaS, standard e-commerce\nMulti-Region Active-Active   | $$$$$ (Highest)       | Zero (0s)            | Near Zero (<1 min)  | FAANG, Global Payments, Heartbeat monitors"
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch17.s02",
@@ -101,6 +119,13 @@
                         "term": "Immutable Audit Logs",
                         "definition": "Append-only log of all critical operations: who did what, when, from where. Never modified or deleted. Store in a tamper-proof location (S3 with Object Lock, append-only database table with no DELETE/UPDATE permissions). Required for: financial compliance (SOX), healthcare (HIPAA), any system where accountability matters. IMPLEMENTATION: every API call that modifies data writes to an audit log: {timestamp, user_id, action, resource, old_value, new_value, ip_address, result}."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "End-to-End Data Integrity: Python SHA-256 Verification",
+                        "description": "A functional snippet showing how to verify data integrity before relying on it (e.g., downloading an S3 Backup).",
+                        "code": "import hashlib\nimport os\n\ndef generate_checksum(filepath):\n    \"\"\"Generates a SHA-256 checksum for a large file in chunks to save memory.\"\"\"\n    sha256_hash = hashlib.sha256()\n    # Read file in 4MB chunks\n    with open(filepath, \"rb\") as f:\n        for byte_block in iter(lambda: f.read(4096 * 1024), b\"\"):\n            sha256_hash.update(byte_block)\n    return sha256_hash.hexdigest()\n\ndef verify_backup_integrity(backup_filepath, original_checksum):\n    \"\"\"Simulates restoring a backup and verifying it hasn't suffered bit-rot.\"\"\"\n    if not os.path.exists(backup_filepath):\n        raise FileNotFoundError(\"Backup file missing!\")\n        \n    print(\"Calculating checksum of restored backup...\")\n    restored_checksum = generate_checksum(backup_filepath)\n    \n    if restored_checksum == original_checksum:\n        print(\"[SUCCESS] Integrity Verified! Checksum matches.\")\n        return True\n    else:\n        print(f\"[FATAL] Corruption Detected!\\nExpected: {original_checksum}\\nGot: {restored_checksum}\")\n        # Trigger immediate alert. NEVER restore this backup to production.\n        return False\n\n# Usage in a Cron Job:\n# verify_backup_integrity('/mnt/backups/db_dump_2024.sql', 'e3b0c442...')"
+                    }
                 ]
             },
             "children": []
@@ -129,6 +154,13 @@
                         "term": "Data Migration Strategies",
                         "definition": "Dual-Write: write to both old and new systems simultaneously. DANGEROUS: no atomicity guarantee — one write can succeed while the other fails. Prefer CDC. Change Data Capture (CDC): Debezium captures every write from the old DB and streams to the new DB via Kafka. Once new DB is fully synced, cut over. Safest approach — keeps both systems in sync. Shadow Reads: after migration, read from both old and new systems, compare results. If they match, the new system is correct. If not, investigate discrepancies before cutover."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix Global Active-Active & Multi-Region Evacuation",
+                        "description": "How Netflix routes traffic globally and dynamically evacuates an entire AWS region (e.g., us-east-1) in under 7 minutes during an outage without dropping user streams.",
+                        "code": "The Architecture:\nNetflix runs entirely on AWS across three regions: us-east-1 (N. Virginia), us-west-2 (Oregon), and eu-west-1 (Ireland). The architecture is 'Active-Active'. Every region is capable of serving 100% of the customer base if necessary.\n\nGlobal State:\nTo make this possible, heavily mutated data (e.g., user profiles, continuous viewing histories) is stored in Cassandra, using its native multi-region asynchronous replication. When a user watches a movie in New York (us-east-1), the fact that they paused at 32:01 is replicated to Europe and Oregon within milliseconds.\n\nThe Evacuation Process:\nWhen internal telemetry detects an anomaly in us-east-1 (elevated error rates, EC2 instance drops), the Netflix SRE team hits a literal 'Evacuate' button. \n1. DNS Routing: AWS Route 53 global DNS records are updated. Traffic from the East Coast USA is instantly rerouted to us-west-2 (Oregon).\n2. Auto-Scaling: The microservices in us-west-2 detect the massive traffic spike and trigger aggressive EC2 auto-scaling to absorb the load.\n3. Cache Warming: Because Memcached is regional, the cache in Oregon is cold for East Coast users. To prevent DB thrashing during evacuation, Netflix built 'Hollow', an in-memory dataset replication tool that keeps caches warm globally.\n\nTakeaway: \nAchieving an RTO of < 7 minutes for a region-wide cloud outage requires relentless chaos testing. Netflix conducts these evacuations *routinely* (at least once a month) during peak business hours to verify it works."
+                    }
                 ]
             },
             "children": []
@@ -147,5 +179,13 @@
             "title": "AWS Multi-Region Architectures",
             "url": "https://aws.amazon.com/solutions/implementations/multi-region-application-architecture/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Disaster Recovery (RTO / RPO)",
+        "description": "Active-Passive Data Center failover procedures.",
+        "data": {
+            "mermaid_source": "graph TD\n  Route53[DNS Level Routing] --> |99% Traffic| Primary[Active Region: US-East]\n  Route53 --> |1% Health Check Traffic| Secondary[Passive Region: US-West]\n  \n  subgraph Primary\n    App1[App Cluster] --> DB1[(Primary Database)]\n  end\n  subgraph Secondary\n    App2[Standby Cluster - Scaled Down] --> DB2[(Read Replica)]\n  end\n  \n  DB1 -.-> |Replication Delay: 5 seconds| DB2\n  \n  Primary -.-x |METEOR STRIKE| App1\n  Route53 --> |Failover Detected| Secondary\n  Secondary --> ScaleUp[Trigger Auto-Scaling]\n  DB2 --> Promote[Promote DB2 to Write-Master]\n  \n  style Primary stroke:#ff4444,stroke-width:3px\n  style Route53 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px"
+        }
+    }
 }

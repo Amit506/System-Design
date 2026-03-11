@@ -44,7 +44,7 @@
                 "key_concepts": [
                     {
                         "term": "L4 Load Balancer (Transport Layer)",
-                        "definition": "Routes traffic based on IP address and TCP/UDP port. Does NOT inspect the request content (URL, headers, body). Simply forwards TCP connections. HOW IT WORKS: receives TCP SYN, selects backend using algorithm, rewrites destination IP (NAT) or establishes separate TCP connection (proxy mode). Extremely fast — operates at kernel level, handles millions of connections/sec. TOOLS: Linux IPVS (IP Virtual Server), AWS NLB (Network Load Balancer), HAProxy in TCP mode. USE WHEN: you need raw throughput and don't need content-based routing (database connections, gRPC, WebSocket, any non-HTTP protocol)."
+                        "definition": "INTERNAL: Routes traffic based on IP address and TCP/UDP port. Does NOT inspect the request content (URL, headers, body). Simply forwards TCP connections. HOW IT WORKS: receives TCP SYN, selects backend using algorithm, rewrites destination IP (NAT) or establishes separate TCP connection (proxy mode). Extremely fast — operates at kernel level, handles millions of connections/sec. TOOLS: Linux IPVS (IP Virtual Server), AWS NLB (Network Load Balancer), HAProxy in TCP mode. USE WHEN: you need raw throughput and don't need content-based routing (database connections, gRPC, WebSocket, any non-HTTP protocol)."
                     },
                     {
                         "term": "L7 Load Balancer (Application Layer)",
@@ -64,10 +64,21 @@
                         "title": "Client-Side Load Balancing (Java Spring & gRPC Python)",
                         "description": "Developer blogs heavily recommend Client-Side load balancing for internal microservice-to-microservice calls to avoid network hops. Spring uses `Spring Cloud LoadBalancer` (formerly Netflix Ribbon). gRPC uses built-in name resolvers.",
                         "code": "// --- Java: Spring Cloud LoadBalancer ---\n@LoadBalanced // This single annotation injects a client-side LB interceptor\n@Bean\npublic RestTemplate restTemplate() {\n    return new RestTemplate();\n}\n// Usage: URL is the service name, not an IP. Client picks the real IP locally.\nrestTemplate.getForObject(\"http://ORDER-SERVICE/orders/1\", String.class);\n\n# --- Python: gRPC Client-Side Round Robin ---\n# gRPC natively supports client-side load balancing via DNS or custom resolvers\nimport grpc\n# Connect to a headless service (DNS returns multiple A records)\nchannel = grpc.insecure_channel(\n    'dns:///my-service:50051',\n    options=[('grpc.lb_policy_name', 'round_robin')] # Built-in LB policy\n)\nstub = helloworld_pb2_grpc.GreeterStub(channel)"
+                    },
+                    {
+                        "title": "AWS NLB Monitoring Outage Case Study",
+                        "description": "A real-world example of how a failure in the health-check monitoring plane can take down the data plane.",
+                        "code": "What Happened:\nIn 2025, an AWS internal subsystem responsible for monitoring Network Load Balancers (NLBs) failed. The LB itself was fine, but the system reporting which backend EC2 instances were 'healthy' began aggressively flapping and returning stale data.\n\nThe Cascade:\nNLBs began routing traffic to dead or incapacitated servers because the health-check source of truth was corrupted. This caused a massive spike in 5xx errors for downstream customers.\n\nTakeaway for Interviews:\nLoad balancers rely on health checks. If the health checking mechanism fails open (assumes everything is dead), the LB drops all traffic. If it fails closed (assumes everything is healthy despite being dead), it blackholes traffic into dead servers. The best design uses 'Fail Open' routing if all targets fail health checks: route traffic anyway, assuming the health checker itself is what's broken."
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
                     }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch04.s02",
@@ -106,6 +117,13 @@
                     {
                         "term": "Random",
                         "definition": "Randomly select a server. Statistically equivalent to round robin for large numbers of requests. Zero state tracking. Surprisingly effective at scale. VARIANT: Power of Two Random Choices — pick 2 random servers, send to the one with fewer connections. This achieves near-optimal load distribution with minimal overhead. Used by Envoy proxy."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Consistent Hashing with Virtual Nodes (Python)",
+                        "description": "In FAANG interviews, if you mention Consistent Hashing, you MUST mention 'Virtual Nodes' to solve the Access Skew (hot partition) problem.",
+                        "code": "import hashlib\nimport bisect\n\nclass ConsistentHashRing:\n    def __init__(self, replicas=3):\n        # 'replicas' = number of Virtual Nodes per physical server\n        self.replicas = replicas\n        self.ring = {} # Map hash -> Server ID\n        self.sorted_keys = []\n\n    def add_node(self, node):\n        for i in range(self.replicas):\n            # Hash the node + virtual index (e.g. \"server1-0\", \"server1-1\")\n            v_node_key = f\"{node}-{i}\".encode('utf-8')\n            hashed = int(hashlib.md5(v_node_key).hexdigest(), 16)\n            self.ring[hashed] = node\n            bisect.insort(self.sorted_keys, hashed)\n\n    def get_node(self, string_key):\n        if not self.ring: return None\n        hashed_key = int(hashlib.md5(string_key.encode('utf-8')).hexdigest(), 16)\n        \n        # Find the first Virtual Node on the ring clockwise from the hashed key\n        idx = bisect.bisect(self.sorted_keys, hashed_key)\n        if idx == len(self.sorted_keys):\n            idx = 0 # Wrap around the ring\n            \n        return self.ring[self.sorted_keys[idx]]\n\n# Usage\nring = ConsistentHashRing(replicas=100) # 100 virtual nodes makes distribution perfectly even\nring.add_node(\"Cache-Server-1\")\nring.add_node(\"Cache-Server-2\")\nprint(ring.get_node(\"user_profile_123\")) # Deterministically routes to one cache server"
                     }
                 ]
             },
@@ -200,6 +218,39 @@
                 }
             ],
             "children": []
+        },
+        {
+            "id": "ch04.s05",
+            "title": "Load Balancing Decision Matrices",
+            "parent_id": "ch04",
+            "order": 5,
+            "tags": [
+                "checklist",
+                "matrix",
+                "evaluation"
+            ],
+            "summary": "A rubric-based checklist to justify Load Balancer and CDN choices during interviews.",
+            "explanation": {
+                "overview": "When designing the ingress layer, use this matrix to quickly define your LB tier.",
+                "key_concepts": [
+                    {
+                        "term": "The 'Terminate SSL' Test",
+                        "definition": "If you terminate SSL at the load balancer, you MUST use an L7 load balancer. L4 load balancers cannot read the encrypted payload to make routing decisions."
+                    },
+                    {
+                        "term": "The 'Sticky Session' Trap",
+                        "definition": "If your LB uses IP Hash or sticky cookies to route users, what happens when that backend server dies? The user gets randomly logged out. Always store sessions externally (Redis)."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Decision Matrix: LB Types",
+                        "description": "How FAANG engineers confidently select LB layers.",
+                        "code": "REQUIREMENT                          | L4 (Network LB)  | L7 (Application LB) | Client-Side LB\n-------------------------------------|------------------|---------------------|--------------------\nMillions of connections/sec (Raw I/O)| Excellent        | Poor                | N/A\nRoute based on URL (/api vs /static) | Impossible       | Excellent           | N/A\nTerminate SSL                        | Impossible       | Excellent           | N/A\nInternal Microservice-to-Microservice| Good             | Good                | Excellent (Zero Hop)\nSticky Sessions                      | Poor (IP Hash)   | Excellent (Cookie)  | N/A"
+                    }
+                ]
+            },
+            "children": []
         }
     ],
     "references": [
@@ -215,5 +266,13 @@
             "title": "HAProxy Documentation",
             "url": "https://www.haproxy.org/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "L4 vs L7 Load Balancing",
+        "description": "Differentiating routing based on IPs vs HTTP Headers.",
+        "data": {
+            "mermaid_source": "graph TD\n  Client --> L4[Layer 4 LB: Network Router]\n  L4 --> L7_1[Layer 7 LB: Nginx/HAProxy]\n  L4 --> L7_2[Layer 7 LB: Nginx/HAProxy]\n  \n  L7_1 --> App1[API Service]\n  L7_1 --> CDN[Static Files / CDN]\n  \n  L7_2 --> App2[API Service]\n  L7_2 --> Secure[Auth Service]\n  \n  style L4 fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd\n  style L7_1 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style L7_2 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px"
+        }
+    }
 }

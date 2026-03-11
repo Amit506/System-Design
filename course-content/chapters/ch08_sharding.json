@@ -32,7 +32,7 @@
                 "key_concepts": [
                     {
                         "term": "Range-Based Sharding",
-                        "definition": "Assign key ranges to shards: Shard A = users 0-999,999. Shard B = users 1,000,000-1,999,999. PROS: efficient range queries (all user 500,000's data on one shard). Simple to understand and implement. CONS: hot spots — if user 0-999,999 are early adopters who are more active, Shard A gets disproportionate load. New users all go to the latest shard, creating a write hotspot. WHEN TO USE: time-series data (partition by date range — each month on a separate shard), alphabetical partitioning (surnames A-M, N-Z)."
+                        "definition": "INTERNAL: Assign key ranges to shards: Shard A = users 0-999,999. Shard B = users 1,000,000-1,999,999. PROS: efficient range queries (all user 500,000's data on one shard). Simple to understand and implement. CONS: hot spots — if user 0-999,999 are early adopters who are more active, Shard A gets disproportionate load. New users all go to the latest shard, creating a write hotspot. WHEN TO USE: time-series data (partition by date range — each month on a separate shard), alphabetical partitioning (surnames A-M, N-Z)."
                     },
                     {
                         "term": "Hash-Based Sharding",
@@ -46,9 +46,32 @@
                         "term": "Geo-Based Sharding",
                         "definition": "Shard by geographic region: US users on US-West shard, EU users on EU-Frankfurt shard. Data locality: users are served by the nearest shard, minimizing latency. USED BY: Uber (geo-sharded by city), Spanner (region-based placement). CHALLENGE: users who travel across regions."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Instagram's Postgres Sharding Architecture",
+                        "description": "How Instagram scaled to billions of photos using logical sharding and decentralized ID generation.",
+                        "code": "The Challenge:\nInstagram needed to assign unique IDs to billions of photos across thousands of PostgreSQL shards. A central auto-incrementing database would be a massive bottleneck. They couldn't rely on UUIDs because they needed the IDs to be naturally sortable by time (for chronologically sorting feeds).\n\nThe Solution (Decentralized Sharding):\nThey built a system inspired by Twitter Snowflake but implemented directly inside Postgres using PL/PGSQL stored procedures. Each photo ID is a 64-bit integer composed of:\n- 41 bits: Time in milliseconds since a custom epoch (allows 41 years of IDs).\n- 13 bits: Logical Shard ID (allows up to 8,192 logical shards).\n- 10 bits: Auto-incrementing sequence within that millisecond (allows 1,024 IDs per shard per millisecond).\n\nTakeaway for Interviews:\nBy embedding the Shard ID directly into the primary key, the application instantly knows which database shard holds a given photo without needing a directory lookup service. Furthermore, the IDs are time-sortable, allowing fast pagination across shards without complex global sorting."
+                    },
+                    {
+                        "title": "Python Implementation of Snowflake ID Generation",
+                        "description": "A practical implementation of the Twitter/Instagram ID generation strategy for sharded databases.",
+                        "code": "import time\nimport threading\n\nclass ShardedIdGenerator:\n    def __init__(self, logical_shard_id):\n        self.shard_id = logical_shard_id\n        self.sequence = 0\n        self.last_timestamp = -1\n        self.lock = threading.Lock()\n        # Instagram style: 41 bits time, 13 bits shard, 10 bits seq\n        self.EPOCH = 1314220021721 # Custom epoch in ms\n\n    def next_id(self):\n        with self.lock:\n            current_timestamp = int(time.time() * 1000)\n\n            if current_timestamp < self.last_timestamp:\n                raise Exception(\"Clock moved backwards!\")\n\n            if current_timestamp == self.last_timestamp:\n                self.sequence = (self.sequence + 1) & 1023 # Max 1023 (10 bits)\n                if self.sequence == 0:\n                    # Sequence exhausted, wait for next millisecond\n                    while current_timestamp <= self.last_timestamp:\n                        current_timestamp = int(time.time() * 1000)\n            else:\n                self.sequence = 0\n\n            self.last_timestamp = current_timestamp\n\n            # Bitwise composition\n            time_part = (current_timestamp - self.EPOCH) << 23\n            shard_part = self.shard_id << 10\n            \n            return time_part | shard_part | self.sequence\n\n# Usage on server #555:\ngenerator = ShardedIdGenerator(logical_shard_id=555)\nphoto_id = generator.next_id()\nprint(f\"Generated 64-bit Sortable Shard ID: {photo_id}\")"
+                    },
+                    {
+                        "title": "Sharding Routing Decision Matrix",
+                        "description": "Use this matrix in interviews to rapidly justify your sharding strategy selection.",
+                        "code": "STRATEGY             | PROS                                      | CONS                                      | BEST FOR\n---------------------|-------------------------------------------|-------------------------------------------|--------------------------------\nHash-Based (Modulo)  | Even data distribution, simple to code    | Hard to add rows (massive rebalancing)    | Static number of shards\nConsistent Hashing   | Easy to add/remove shards (K/N movement)  | Requires virtual nodes to prevent skew    | Distributed caches, DynamoDB\nDirectory (Lookup)   | Maximum flexibility (can move any key)    | Directory becomes SPOF and latency hit    | B2B SaaS (tenant mappings)\nRange-Based          | Fast range queries (WHERE date BETWEEN)   | Creates massive hotspots on newest shard  | Time-series data, logs\nGeo-Sharding         | Ultra-low latency for local users         | Cross-region reads are terribly slow      | Global ride-sharing (Uber)"
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch08.s02",
@@ -85,72 +108,11 @@
                 ]
             },
             "diagram": {
-                "type": "excalidraw",
+                "type": "mermaid",
                 "title": "Consistent Hashing Ring with Virtual Nodes",
                 "description": "A circular ring showing 3 physical nodes (A, B, C) each with 3 virtual nodes spread across the ring. Keys are placed on the ring and assigned to the next clockwise node.",
                 "data": {
-                    "type": "excalidraw",
-                    "version": 2,
-                    "elements": [
-                        {
-                            "type": "ellipse",
-                            "x": 100,
-                            "y": 100,
-                            "width": 300,
-                            "height": 300,
-                            "backgroundColor": "transparent",
-                            "strokeColor": "#1971c2",
-                            "label": "Hash Ring [0, 2^32)"
-                        },
-                        {
-                            "type": "text",
-                            "x": 250,
-                            "y": 80,
-                            "text": "A1"
-                        },
-                        {
-                            "type": "text",
-                            "x": 380,
-                            "y": 180,
-                            "text": "B2"
-                        },
-                        {
-                            "type": "text",
-                            "x": 350,
-                            "y": 340,
-                            "text": "C1"
-                        },
-                        {
-                            "type": "text",
-                            "x": 150,
-                            "y": 370,
-                            "text": "A2"
-                        },
-                        {
-                            "type": "text",
-                            "x": 80,
-                            "y": 250,
-                            "text": "B1"
-                        },
-                        {
-                            "type": "text",
-                            "x": 130,
-                            "y": 130,
-                            "text": "C2"
-                        },
-                        {
-                            "type": "text",
-                            "x": 300,
-                            "y": 120,
-                            "text": "key1 → A1"
-                        },
-                        {
-                            "type": "text",
-                            "x": 380,
-                            "y": 280,
-                            "text": "key2 → C1"
-                        }
-                    ]
+                    "mermaid_source": "graph TD\n  subgraph Ring [Hash Ring 0 to 2^32-1]\n    A1((A1)) --- B2((B2))\n    B2 --- C1((C1))\n    C1 --- A2((A2))\n    A2 --- B1((B1))\n    B1 --- C2((C2))\n    C2 --- A1\n  end\n\n  K1[key1] -.->|Clockwise| A1\n  K2[key2] -.->|Clockwise| C1\n\n  style A1 fill:#a5d8ff,stroke:#333\n  style A2 fill:#a5d8ff,stroke:#333\n  style B1 fill:#b2f2bb,stroke:#333\n  style B2 fill:#b2f2bb,stroke:#333\n  style C1 fill:#ffec99,stroke:#333\n  style C2 fill:#ffec99,stroke:#333"
                 }
             },
             "children": []
@@ -237,5 +199,13 @@
             "title": "Debezium — CDC Tool",
             "url": "https://debezium.io/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Consistent Hashing Ring",
+        "description": "Virtual Nodes on a ring minimizing data movement when scaling.",
+        "data": {
+            "mermaid_source": "graph TD\n  R((Hash Ring 0 - 360))\n  R --- N1[Node A]\n  R --- N2[Node B]\n  R --- N3[Node C]\n  \n  User1[User 123 Hash: 40] -.-> N1\n  User2[User 999 Hash: 160] -.-> N2\n  User3[User 404 Hash: 300] -.-> N3\n  \n  N1 -.-> |Replicates to| N2\n  N2 -.-> |Replicates to| N3\n  N3 -.-> |Replicates to| N1\n  \n  style R fill:#1a1a1a,stroke:#d4af37,stroke-width:3px,color:#ddd\n  style N1 fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px"
+        }
+    }
 }

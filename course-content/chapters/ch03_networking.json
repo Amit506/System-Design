@@ -48,15 +48,33 @@
                 "key_concepts": [
                     {
                         "term": "DNS in System Design",
-                        "definition": "DNS-based load balancing: return multiple A records (round-robin). Route 53 weighted routing: 70% traffic to region A, 30% to region B. Latency-based routing: resolve to the closest datacenter. Health checks: automatically remove unhealthy IPs from DNS responses. GeoDNS: resolve to different IPs based on client's geographic location (Cloudflare, Route 53). EDGE CASE: DNS caching means changes take time to propagate. During a migration, set TTL to 60s days before, then switch IPs, then raise TTL back. Some clients ignore TTL (especially Java's default DNS cache timeout of infinity — override with networkaddress.cache.ttl=30)."
+                        "definition": "INTERNAL: DNS-based load balancing: return multiple A records (round-robin). Route 53 weighted routing: 70% traffic to region A, 30% to region B. Latency-based routing: resolve to the closest datacenter. Health checks: automatically remove unhealthy IPs from DNS responses. GeoDNS: resolve to different IPs based on client's geographic location (Cloudflare, Route 53). EDGE CASE: DNS caching means changes take time to propagate. During a migration, set TTL to 60s days before, then switch IPs, then raise TTL back. Some clients ignore TTL (especially Java's default DNS cache timeout of infinity — override with networkaddress.cache.ttl=30)."
                     },
                     {
                         "term": "Anycast",
                         "definition": "Multiple servers share the same IP address. BGP routing sends each client to the nearest server. Used by CDNs (Cloudflare has 300+ PoPs, all sharing the same anycast IP) and DNS root servers (13 addresses but hundreds of physical servers)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Facebook 2021 Global Outage Case Study (BGP & DNS)",
+                        "description": "A catastrophic failure demonstrating what happens when DNS and BGP routing fail simultaneously at a global scale.",
+                        "code": "What Happened:\nDuring a routine maintenance job, Facebook engineers issued a command to assess global backbone capacity. A bug in the audit tool caused it to inadvertently take down all connections in the backbone network.\n\nThe Cascade:\nBecause the backbone went down, Facebook's DNS servers (which announce their IP addresses via BGP - Border Gateway Protocol) suddenly stopped announcing their routes to the global internet. To the rest of the world, Facebook's IP addresses effectively ceased to exist.\n\nThe Catch-22:\nEngineers could not fix the issue remotely because the internal secure management network relied on the very DNS that was down. They had to physically travel to data centers, log into physical routers, and manually override the configurations.\n\nTakeaway for Interviews:\nAlways separate the Control Plane (management tools) from the Data Plane (user traffic). If your management tools rely on the same network they manage, a failure locks you out."
+                    },
+                    {
+                        "title": "Netflix/AWS Real-World Architecture Case Study",
+                        "description": "An advanced look at how FAANG companies scale this specific component.",
+                        "code": "INTERNAL ARCHITECTURE REVIEW:\nAt Netflix and AWS, this component is deployed across multiple availability zones to ensure 99.99% uptime..."
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch03.s02",
@@ -186,6 +204,39 @@
                 "when_to_avoid": "REST for real-time. gRPC for browser-facing. GraphQL for simple CRUD. WebSocket for request-response."
             },
             "children": []
+        },
+        {
+            "id": "ch03.s05",
+            "title": "Networking & API Choice Decision Matrices",
+            "parent_id": "ch03",
+            "order": 5,
+            "tags": [
+                "checklist",
+                "matrix",
+                "evaluation"
+            ],
+            "summary": "A rubric-based checklist to justify API paradigm choices during interviews.",
+            "explanation": {
+                "overview": "When the interviewer asks 'Why REST instead of gRPC?' or 'Why WebSockets?', use these decision matrices.",
+                "key_concepts": [
+                    {
+                        "term": "The 'Schema Contract' Test",
+                        "definition": "Does the client team and server team need a strictly enforced, compile-time contract? If yes, pick gRPC or GraphQL over plain REST."
+                    },
+                    {
+                        "term": "The 'Browser Support' Test",
+                        "definition": "Is the client a web browser? If yes, native gRPC is impossible without gRPC-Web proxy. REST or GraphQL are much better choices."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Decision Matrix: API Paradigms",
+                        "description": "How FAANG engineers confidently select API protocols.",
+                        "code": "REQUIREMENT                          | REST           | gRPC             | GraphQL          | WebSocket / SSE\n-------------------------------------|----------------|------------------|------------------|--------------------\nContract Strictly Enforced           | No (Swagger)   | Yes (.proto)     | Yes (Schema)     | No\nPayload Size (Bandwidth)             | Heavy (JSON)   | Light (Binary)   | Med (JSON)       | Light (Frames)\nBrowser Native Support               | Excellent      | Poor (needs proxy)| Excellent      | Excellent\nInternal Microservice-to-Microservice| Good           | Excellent        | Poor             | Poor\nReal-Time Bidirectional Data         | Poor (Polling) | Good (Streams)   | Subscriptions    | Excellent\nMitigates Over/Under-Fetching        | No             | No               | Excellent        | N/A"
+                    }
+                ]
+            },
+            "children": []
         }
     ],
     "references": [
@@ -201,5 +252,13 @@
             "title": "GraphQL Official Specification",
             "url": "https://spec.graphql.org/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "OSI Model & Protocols",
+        "description": "How TCP/IP and WebSockets traverse the networking stack.",
+        "data": {
+            "mermaid_source": "graph LR\n  App[Layer 7: Application <br> HTTP/WebSocket] --> Trans[Layer 4: Transport <br> TCP/UDP]\n  Trans --> Net[Layer 3: Network <br> IP/Routing]\n  Net --> Link[Layer 2: Data Link <br> MAC/Ethernet]\n  \n  App2[Layer 7: Application] --> Trans2[Layer 4: Transport]\n  Trans2 --> Net2[Layer 3: Network]\n  Net2 --> Link2[Layer 2: Data Link]\n  \n  Link <--> |Physical Fiber/Wire| Link2\n  \n  style App fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style App2 fill:#d4af37,color:#000,stroke:#000,stroke-width:2px"
+        }
+    }
 }

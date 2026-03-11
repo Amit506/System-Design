@@ -1,0 +1,109 @@
+{
+    "id": "cs10",
+    "title": "Case Study: Google Docs / Collaborative Editing",
+    "parent_id": null,
+    "order": 27,
+    "tags": [
+        "case-study",
+        "collaboration",
+        "websockets",
+        "ot",
+        "crdt"
+    ],
+    "summary": "Design a real-time collaborative text editor like Google Docs or Figma where 50 users can type the exact same document simultaneously without cursor jumping, overwriting, or state conflicts.",
+    "explanation": {
+        "overview": "Standard stateless web applications rely on \"Last Writer Wins\" (LWW) database rows. If Alice and Bob edit a wiki page at the same time and hit save, one overwrites the other. In a real-time collaborative editor, this is unacceptable. Every keystroke is an event. To resolve concurrent conflicts globally without locking the document, we must use complex distributed algorithms: Operational Transformation (OT) or Conflict-Free Replicated Data Types (CRDTs).",
+        "how_it_works_internally": "INTERNAL Mechanics: Google Docs uses Operational Transformation (OT) via a centralized server. When Alice types 'A' at index 5, and Bob simultaneously types 'B' at index 5, both clients optimisticallly apply their edit instantly (Zero Latency UI) and send the operations over WebSockets to the Collaboration Server. The Server acts as the ultimate source of truth. It receives Alice's edit first (Revision 10), applies it, then receives Bob's edit (originally intended for Revision 9). The server mathematically transforms Bob's edit against Alice's, determining Bob's 'B' should actually go to index 6. The server broadcasts the transformed 'B' back to all clients. Clients update their local states, achieving Eventual Convergence.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "WebSocket Connection",
+                "detail": "Clients open a persistent WebSocket to the Collaboration Server. The server sends the current document state and Version ID (e.g., V100)."
+            },
+            {
+                "step": 2,
+                "title": "Optimistic Local Edit",
+                "detail": "Alice presses 'X'. The client immediately renders 'X' locally (Intention Preservation) and queues an operation `[Retain 5, Insert 'X', Retain 10]` to send to the server."
+            },
+            {
+                "step": 3,
+                "title": "Operational Transformation (Server-Side)",
+                "detail": "Server receives concurrent edits from Alice and Bob. It serializes them, transforms the indices geometrically so they don't overwrite each other, and updates the canonical document."
+            },
+            {
+                "step": 4,
+                "title": "Broadcast and Acknowledge",
+                "detail": "Server broadcasts the transformed operations to everyone else, and sends an 'Acknowledge' back to the original authors."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Operational Transformation (OT)",
+                "definition": "INTERNAL: An algorithm prioritizing a centralized server as the sequencer of truth. It relies on mathematical transformation functions (e.g., `Transform(OpA, OpB)`) to resolve index shifting when concurrent inserts happen."
+            },
+            {
+                "term": "CRDT (Conflict-Free Replicated Data Types)",
+                "definition": "The modern alternative to OT (used by Figma and local-first apps). Instead of relying on a central server to transform indices, every single character is assigned a fractional, infinitely divisible mathematical ID (e.g., between 1 and 2 is 1.5). Edits never conflict because IDs are globally unique, allowing true Peer-to-Peer synchronization."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Pure OT Transformation Logic",
+                "description": "Concrete Python snippet demonstrating how an OT server resolves a concurrent insert collision.",
+                "code": "def transform_insert_insert(op1, op2):\n    # Both try to insert at the same time.\n    if op1.index < op2.index:\n        # Op1 happened earlier in the string. \n        # Op2 needs to be pushed to the right.\n        return Insert(op2.index + len(op1.text), op2.text)\n    elif op1.index > op2.index:\n        # Op1 happened later. Op2 stays where it is.\n        return op2\n    else:\n        # Exact same index. Tie-breaker via arbitrary UUID prioritization.\n        if op1.client_id < op2.client_id:\n            return Insert(op2.index + len(op1.text), op2.text)\n        else:\n            return op2"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Production Java WebSocket broadcasting.",
+                "code": "public class CollaborationServer {\n    // Thread-safe map of active document sessions\n    private final Map<String, DocumentSession> sessions = new ConcurrentHashMap<>();\n    \n    @OnMessage\n    public void onOperation(Session client, String docId, Operation op) {\n        DocumentSession doc = sessions.get(docId);\n        synchronized(doc) {\n            // 1. Transform op against history since client's last known version\n            Operation transformed = doc.getOTEngine().transform(op);\n            // 2. Apply to server copy\n            doc.apply(transformed);\n            // 3. Broadcast to all OTHER clients\n            doc.broadcastExcept(client, transformed);\n        }\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: OT vs CRDT",
+                "description": "Evaluating which collaborative algorithm to use.",
+                "code": "OPTION Operational Transformation (OT) vs OPTION CRDT\n-----------------------------------------------------\nPros OT: Reaps the benefits of a central database. Document state is extremely small in memory (just the raw text). \nCons OT: High network coupling. If the server is slow, the client queues up edits, eventually grinding to a halt.\nPros CRDT: True offline-first capability. Disconnect for 3 hours, reconnect, and flawlessly merge. P2P capable.\nCons CRDT: Memory footprint is massive. A 10KB text file might take 100MB of RAM to track the CRDT tombstone metadata for every character."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Handling WebSocket disconnects.",
+                "code": "try-catch fallback mechanics:\n1. SplitBrainException: Client loses internet on airplane while typing. The local buffer stores the pending operations. Upon reconnecting 5 hours later, the client must fetch the server's entire history (potentially 5,000 revisions) and run the transform logic locally against its massive buffer before it can safely send its delayed edits.\n2. Server Memory Exhaustion: An OT server holds the entire document in RAM. If 1,000 users open a 500-page doc, the node OOMs. Mitigate by dynamically offloading inactive sections of the document to Redis caching."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (WebSocket Buffering)",
+            "default": "Send every keystroke instantly.",
+            "effect": "Modify parameter `batch_latency_ms=500` to buffer edits client-side.",
+            "tradeoff": "Sending every keystroke generates 100 WebSocket frames per second per user. Batching keystrokes every 500ms drastically reduces server CPU and network overhead, but increases the probability of concurrent index conflicts requiring complex transformations."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Scaling the collaboration server globally.",
+            "how": "Use Session Affinity (Sticky Sessions). Unlike stateless HTTP, OT strictly requires all users editing 'Doc Alpha' to be routed to the EXACT same physical server process. Use the API Gateway's Consistent Hashing ring, keyed by `document_id`. If the server crashes, all clients disconnect, the hash ring routes them to a new server, which pulls the latest snapshot from the DB."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Google Docs / OT Architecture Diagram",
+        "description": "WebSockets, Transforms, and Sticky Session Routing.",
+        "data": {
+            "mermaid_source": "graph TD\n  Alice[Alice App] -->|WebSocket (doc123)| LB[Load Balancer]\n  Bob[Bob App] -->|WebSocket (doc123)| LB\n  Charlie[Charlie App] -->|WebSocket (doc999)| LB\n  \n  LB -->|Hash doc123| OT1[OT Server Node 1]\n  LB -->|Hash doc999| OT2[OT Server Node 2]\n  \n  OT1 --> Redis[Redis Cache (Recent Revisions)]\n  OT2 --> Redis\n  \n  Redis -.-> |Periodic Snapshot| S3[(S3 Object Storage)]\n  \n  style OT1 fill:#ff9900\n  style OT2 fill:#ff9900"
+        }
+    },
+    "limitations": [
+        "Cursor Tracking Overhead: Broadcasting the mouse cursor position of 50 users at 60fps melts the server. TWEAK: Decouple cursor tracking from document saving. Cursors use an impermanent Redis Pub/Sub channel and drop packets aggressively, as eventual consistency for a mouse location is irrelevant.",
+        "Snapshot Sizes: Saving the complete history of every keystroke for 5 years creates a database table billions of rows long. TWEAK: The system rolls up operational history every 10 minutes into a flat 'Snapshot', dropping the raw granular operations to cold storage (S3) while keeping only recent operations in active memory."
+    ],
+    "technologies_used": [
+        {
+            "technology": "ShareJS / Txtype",
+            "details": "Open source libraries implementing the incredibly difficult mathematical logic behind Operational Transformation string indexing."
+        },
+        {
+            "technology": "Yjs / Automerge",
+            "details": "The industry-standard open source libraries for implementing CRDTs instead of OT, gaining massive popularity in modern local-first applications."
+        }
+    ]
+}

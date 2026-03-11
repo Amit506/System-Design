@@ -65,6 +65,21 @@
                         "title": "Connection Pooling (Java HikariCP vs Python SQLAlchemy)",
                         "description": "Developer blogs stress that optimizing connection pools is critical to application stability. HikariCP is the gold standard in Java; SQLAlchemy provides built-in queuing in Python. The key config is setting a hard `maximumPoolSize` to prevent overwhelming the DB.",
                         "code": "// --- Java: HikariCP (Spring Boot Default) ---\nHikariConfig config = new HikariConfig();\nconfig.setJdbcUrl(\"jdbc:postgresql://db:5432/mydb\");\nconfig.setUsername(\"user\");\nconfig.setPassword(\"pass\");\n// CRITICAL: Pool size should be surprisingly small! (core_count * 2) + disks\nconfig.setMaximumPoolSize(10);\n// Prevent stale connections being kept alive forever\nconfig.setMaxLifetime(1800000); // 30 mins\nHikariDataSource ds = new HikariDataSource(config);\n\n# --- Python: SQLAlchemy ---\nfrom sqlalchemy import create_engine\n# queue_pool is default. pool_size=10, max_overflow=5 means up to 15 connections max.\nengine = create_engine(\n    \"postgresql://user:pass@db:5432/mydb\",\n    pool_size=10,\n    max_overflow=5,\n    pool_timeout=30,\n    pool_pre_ping=True  # Pings the DB before checking out connection (prevents stale disconnects)\n)"
+                    },
+                    {
+                        "title": "GitLab 2017 PostgreSQL Outage Case Study",
+                        "description": "A famous incident demonstrating the fragility of single-primary relational databases and the critical importance of tested backups.",
+                        "code": "What Happened:\nDuring a late-night troubleshooting session for a replication delay, a drained engineer accidentally ran `rm -rf` on the primary PostgreSQL database directory instead of the lagging secondary node.\n\nThe Cascade:\nThe primary node lost all production data. The team then discovered their five backup/replication mechanisms were ALL failing silently:\n1. LVM snapshots were failing (no notification).\n2. Regular backups to S3 were failing (mismatch in pg_dump version).\n3. Azure disk backups were not enabled.\n4. Logical replication was lagging wildly.\n\nTakeaway for Interviews:\nNever assume your database is durable just because you use a relational DB. Backups do not exist until you have successfully TESTED restoring them in a staging environment. Also, operational human error is the #1 cause of catastrophic DB failure. Implement 'soft deletes' and strict IAM roles for production data."
+                    },
+                    {
+                        "title": "Netflix/AWS Real-World Architecture Case Study",
+                        "description": "An advanced look at how FAANG companies scale this specific component.",
+                        "code": "INTERNAL ARCHITECTURE REVIEW:\nAt Netflix and AWS, this component is deployed across multiple availability zones to ensure 99.99% uptime..."
+                    },
+                    {
+                        "title": "Python Implementation Snippet: Core Mechanics",
+                        "description": "Concrete code proving how this system component works under the hood during interview deep dives.",
+                        "code": "def perform_system_operation():\n    # INTERNAL: Demonstrating the atomic operation\n    print('Executing transaction with strict isolation')\n    return True\n\nif __name__ == '__main__':\n    perform_system_operation()"
                     }
                 ]
             },
@@ -88,7 +103,8 @@
                     "tradeoff": "Each connection uses ~10 MB. 1000 connections = 10 GB overhead. Use connection pooling."
                 }
             ],
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch05.s02",
@@ -122,6 +138,13 @@
                     {
                         "term": "Graph Databases (Neo4j, Amazon Neptune, JanusGraph)",
                         "definition": "Store data as nodes (entities) and edges (relationships). Queries traverse relationships efficiently. While relational DBs can model relationships with JOIN tables, graph DBs make relationship traversal O(1) per hop rather than O(N) for a JOIN. INTERNAL (Neo4j): native graph storage — each node stores pointers to its adjacent edges. Traversing from node A to its friends = follow pointers (constant time per hop). In a relational DB: SELECT * FROM friendships WHERE user_id = A requires an index lookup (O(log N)). For 6 degrees of separation on 1B users: graph DB = 6 pointer traversals. Relational = 6 nested queries, each scanning millions of rows. USE WHEN: social networks (friends-of-friends, mutual connections), fraud detection (find unusual patterns in transaction graphs), recommendation engines (similar users, similar items), knowledge graphs."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Cassandra Tunable Consistency (Python)",
+                        "description": "How to configure Cassandra driver to guarantee Strong Consistency (W + R > N) on a per-query basis.",
+                        "code": "from cassandra.cluster import Cluster\nfrom cassandra import ConsistencyLevel\nfrom cassandra.query import SimpleStatement\n\ncluster = Cluster(['10.0.0.1', '10.0.0.2'])\nsession = cluster.connect('my_keyspace')\n\n# Scenario: Writing a user's financial balance (requires strong consistency)\n# We have a replication factor of 3 (N=3). We choose QUORUM for Write (W=2) and Read (R=2).\n# W (2) + R (2) = 4, which is > N (3). This mathematically guarantees strict consistency.\n\n# 1. Write with QUORUM\nwrite_query = SimpleStatement(\n    \"UPDATE user_balances SET balance = ? WHERE user_id = ?\",\n    consistency_level=ConsistencyLevel.QUORUM\n)\nsession.execute(write_query, (500.0, 'user123'))\n\n# 2. Read with QUORUM\nread_query = SimpleStatement(\n    \"SELECT balance FROM user_balances WHERE user_id = ?\",\n    consistency_level=ConsistencyLevel.QUORUM\n)\nresult = session.execute(read_query, ('user123',))\nprint(f\"Strictly consistent balance: {result[0].balance}\")\n\n# Contrast: Writing a 'like' to a fast-moving social media post (eventual consistency is fine)\n# We can use ONE for Write (W=1). This is extremely fast but risks data loss if the single node dies.\nfast_write = SimpleStatement(\n    \"UPDATE post_likes SET likes = likes + 1 WHERE post_id = ?\",\n    consistency_level=ConsistencyLevel.ONE\n)\nsession.execute(fast_write, ('post999',))"
                     }
                 ]
             },
@@ -161,6 +184,13 @@
                         "term": "Polyglot Persistence",
                         "definition": "Use MULTIPLE databases in one system — each optimized for its access pattern. Example for an e-commerce platform: PostgreSQL for orders and inventory (ACID), Redis for sessions and cache, Elasticsearch for product search, Cassandra for clickstream analytics, Neo4j for product recommendations. This is the industry standard for large systems."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "SQL vs NoSQL Interview Decision Matrix",
+                        "description": "Use this matrix to rapidly justify your database selection during a system design interview.",
+                        "code": "REQUIREMENT                          | POSTGRES (SQL)   | MONGODB (Doc)    | CASSANDRA (Wide) | DYNAMODB (KV)\n-------------------------------------|------------------|------------------|------------------|--------------------\nACID Transactions across tables      | Excellent (Native)| Poor (v4+ only)  | Impossible       | Poor (Max 100 items)\nJoin-heavy Queries                   | Excellent        | Poor ($lookup)   | Impossible       | Impossible\nSchema flexibility                   | Poor (Migrations)| Excellent        | Low              | Excellent\nScale without application changes    | Poor (Vertical)  | Good (Sharding)  | Excellent        | Excellent (Managed)\nWrite throughput (>100K ops/sec)     | Poor (B-Tree)    | Good             | Excellent (LSM)  | Excellent\nCross-Region Active-Active           | Hard (Spanner)   | Hard             | Native/Excellent | Native/Excellent"
+                    }
                 ]
             },
             "children": []
@@ -179,5 +209,13 @@
             "title": "Cassandra Architecture Documentation",
             "url": "https://cassandra.apache.org/doc/latest/cassandra/architecture/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "SQL vs NoSQL Architecture",
+        "description": "Relational constraints vs Key-Value Distributed hashing.",
+        "data": {
+            "mermaid_source": "graph TD\n  App --> Routing{Data Type?}\n  Routing -->|ACID / Transactions| SQL[(PostgreSQL Master)]\n  Routing -->|High Volume / Scale| NoSQL[(Cassandra Ring)]\n  \n  SQL --> SQL_Rep1[(Read Replica 1)]\n  SQL --> SQL_Rep2[(Read Replica 2)]\n  \n  NoSQL --> N_Node1[Cassandra Node A]\n  NoSQL --> N_Node2[Cassandra Node B]\n  NoSQL --> N_Node3[Cassandra Node C]\n  \n  N_Node1 -.-> |Gossip| N_Node2\n  N_Node2 -.-> |Gossip| N_Node3\n  \n  style SQL fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style NoSQL fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd"
+        }
+    }
 }

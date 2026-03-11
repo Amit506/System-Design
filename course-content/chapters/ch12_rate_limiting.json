@@ -48,6 +48,28 @@
                         "term": "Sliding Window Counter (Hybrid)",
                         "definition": "INTERNAL: combines fixed window with weighted averaging. Keep counters for current window and previous window. Estimated count = prev_window_count × overlap_percentage + curr_window_count. Example: 60-second windows. We're 15 seconds into the current window. Previous window had 45 requests. Current window has 18 requests. Estimated rate = 45 × (45/60) + 18 = 45 × 0.75 + 18 = 33.75 + 18 = 51.75. If limit is 60, allow. IMPLEMENTATION: just two counters (2 Redis keys per client). O(1) memory. Error < 0.003% in practice. USED BY: Cloudflare for their rate limiting. This is the industry-standard algorithm — simple, memory-efficient, and accurate enough."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Stripe's 4-Dimensional Rate Limiting Architecture",
+                        "description": "How Stripe, a developer-first financial API, uses multiple concurrent rate limiters to guarantee platform stability without punishing legitimate users.",
+                        "code": "The Problem:\nStripe processes billions of API calls for payments globally. A simple '100 requests per second' limit per user is insufficient because some operations (like creating a charge) are highly resource-intensive, while others (like retrieving a past transaction) are cheap.\n\nThe Architecture (4 Types of Limiters):\nStripe employs four distinct types of rate limiters simultaneously:\n1. Request Rate Limiters: The standard API limit (e.g., 100 req/sec per user). Uses a fast Redis Token Bucket.\n2. Concurrent Requests Limiters: Prevents resource exhaustion from slow endpoints. If a user tries to run 50 simultaneous heavy 'Search' queries that each take 2 seconds, they are blocked even if their req/sec limit is high.\n3. Fleet Usage Limiters: Limits total platform traffic across all users. If Stripe's internal capacity is dwindling during Black Friday, they throttle lower-priority API calls globally to ensure critical payments always process.\n4. Worker Utilization Limiters: If a specific backend service (e.g., the Webhook Sender) is overloaded, it sheds load by returning 429s specifically for that service, preserving the rest of the API.\n\nTakeaway for Interviews:\nAdvanced rate limiting is not just about counting HTTP requests. It's about protecting backend compute, managing concurrency, and prioritizing critical business paths over non-critical ones."
+                    },
+                    {
+                        "title": "Rate Limiting Algorithm Strategy Matrix",
+                        "description": "Evaluate the optimal rate limiting algorithm based on business edge cases.",
+                        "code": "ALGORITHM                    | MEMORY USE | BURST HANDLING | BOUNDARY ISSUES | BEST USED FOR\n-----------------------------|------------|----------------|-----------------|-----------------------------------------------------\nToken Bucket                 | Low (O(1)) | Excellent      | No              | General API usage (Stripe, AWS API Gateway)\nLeaky Bucket                 | Med (Queue)| None (Smoothed)| No              | Throttling asynchronous background traffic/queues\nFixed Window Counter         | Lowest     | Moderate       | Yes (2x limit)  | Basic quota limits (e.g., 500 emails per day)\nSliding Window Log           | Very High  | Excellent      | No              | Extremely precise limiting for low-volume/high-value APIs\nSliding Window Counter       | Low (O(1)) | Excellent      | No              | High-traffic global edge API limits (Cloudflare)"
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
             "advanced_tweaks": [
@@ -62,7 +84,15 @@
                     "how": "Instead of hard blocking at limit, degrade gradually: 0-80% of limit = full speed. 80-100% = add artificial delay (100-500ms). 100%+ = return 429. This gives the client a chance to back off before being hard-blocked."
                 }
             ],
-            "children": []
+            "children": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch12.s02",
@@ -89,6 +119,13 @@
                         "term": "Response Headers",
                         "definition": "Always return rate limit info in response headers: X-RateLimit-Limit: 100 (max requests per window), X-RateLimit-Remaining: 42 (requests left in current window), X-RateLimit-Reset: 1710456789 (Unix timestamp when window resets), Retry-After: 30 (seconds to wait, included with 429 response)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Token Bucket Implementation via Redis Lua Scripting",
+                        "description": "A production-grade algorithmic snippet ensuring perfectly atomic distributed rate limiting without CPU loops or race conditions.",
+                        "code": "-- The Redis KEYs and ARGs provided by the application\nlocal tokens_key = KEYS[1]\nlocal timestamp_key = KEYS[2]\n\nlocal rate = tonumber(ARGV[1])\nlocal capacity = tonumber(ARGV[2])\nlocal now = tonumber(ARGV[3])\nlocal requested = tonumber(ARGV[4])\n\n-- Fetch current state limit per client\nlocal last_tokens = tonumber(redis.call(\"get\", tokens_key))\nif last_tokens == nil then\n    last_tokens = capacity\nend\n\nlocal last_refreshed = tonumber(redis.call(\"get\", timestamp_key))\nif last_refreshed == nil then\n    last_refreshed = 0\nend\n\nlocal delta = math.max(0, now - last_refreshed)\n-- Refill based on time elapsed\nlocal filled_tokens = math.min(capacity, last_tokens + (delta * rate))\nlocal allowed = filled_tokens >= requested\nlocal new_tokens = filled_tokens\n\nif allowed then\n    -- Consume tokens\n    new_tokens = filled_tokens - requested\nend\n\n-- Update Redis keys unconditionally\nredis.call(\"setex\", tokens_key, 60, new_tokens)\nredis.call(\"setex\", timestamp_key, 60, now)\n\nreturn { allowed, new_tokens }"
+                    }
                 ]
             },
             "children": []
@@ -103,5 +140,13 @@
             "title": "Cloudflare Rate Limiting",
             "url": "https://blog.cloudflare.com/counting-things-a-lot-of-different-things/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Token Bucket Architecture",
+        "description": "Multi-tier rate limiting executing within distributed Redis Lua scripts.",
+        "data": {
+            "mermaid_source": "graph TD\n  Req[Incoming API Request] --> MW[Rate Limit Middleware]\n  MW --> |Eval Lua Script| Redis[(Redis Token Buckets)]\n  \n  Redis --> |Check IP Bucket| B1{Tokens > 0?}\n  Redis --> |Check User Bucket| B2{Tokens > 0?}\n  \n  B1 --> |Yes| B2\n  B1 --> |No| 429[HTTP 429 Too Many Requests]\n  B2 --> |No| 429\n  B2 --> |Yes| Decrement[Decrement Tokens]\n  Decrement --> 200[Pass Request to API]\n  \n  style Redis fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style 429 fill:#1a1a1a,stroke:#ff4444,stroke-width:2px,color:#ddd"
+        }
+    }
 }

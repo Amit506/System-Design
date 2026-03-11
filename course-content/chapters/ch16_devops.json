@@ -34,7 +34,7 @@
                 "key_concepts": [
                     {
                         "term": "CI (Continuous Integration)",
-                        "definition": "Every commit triggers: code checkout → build → lint → unit tests → integration tests → artifact creation (Docker image, JAR). Fast feedback: developers know within 5-10 minutes if their change broke anything. BEST PRACTICES: (1) Run tests in parallel (split across pods). (2) Cache dependencies (node_modules, Maven .m2). (3) Fail fast (lint first, then unit tests, then slow integration tests). (4) Trunk-based development (short-lived branches, merge to main daily). TOOLS: GitHub Actions, GitLab CI, Jenkins, CircleCI, ArgoCD."
+                        "definition": "INTERNAL: Every commit triggers: code checkout → build → lint → unit tests → integration tests → artifact creation (Docker image, JAR). Fast feedback: developers know within 5-10 minutes if their change broke anything. BEST PRACTICES: (1) Run tests in parallel (split across pods). (2) Cache dependencies (node_modules, Maven .m2). (3) Fail fast (lint first, then unit tests, then slow integration tests). (4) Trunk-based development (short-lived branches, merge to main daily). TOOLS: GitHub Actions, GitLab CI, Jenkins, CircleCI, ArgoCD."
                     },
                     {
                         "term": "CD (Continuous Deployment/Delivery)",
@@ -44,9 +44,40 @@
                         "term": "Deployment Strategies",
                         "definition": "Rolling Update (K8s default): replace old pods one at a time with new pods. minAvailable ensures minimum capacity during deploy. Zero downtime but both versions coexist during rollout — APIs must be backward compatible. Blue-Green: two identical environments (Blue = current, Green = new). Deploy to Green, test, then switch traffic (DNS or LB). Instant rollback (switch back to Blue). COST: 2× infrastructure during deploy. Canary: route 1-5% of traffic to new version. Monitor error rate, latency, business metrics. If OK, gradually increase (10%, 25%, 50%, 100%). If problems, rollback immediately. A/B Testing: like canary but based on user segments (new users, specific region, premium tier) for feature evaluation, not just safety."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix Spinnaker & Automated Canary Analysis (ACA)",
+                        "description": "How Netflix safely deploys thousands of times a day without human manual testing using statistical canary analysis.",
+                        "code": "The Problem:\nDeploying to 100% of servers at once causes catastrophic global outages if a bug slips through CI. Manual canary deployments (deploying to 1 server and having a human watch the logs) doesn't scale for 1000s of microservices.\n\nThe Architecture (Spinnaker + Kayenta):\nNetflix open-sourced Spinnaker, their continuous delivery platform. When a developer merges code, Spinnaker starts an 'Automated Canary Deployment'.\n1. It spins up three clusters: Production (existing), Baseline (a fresh copy of the old code), and Canary (the new code). *Why Baseline? Because a brand new cold-started pod behaves differently than a pod that has been running for 5 days. Comparing Canary to Baseline ensures an apples-to-apples comparison.\n2. It routes 1% of traffic to Baseline and 1% to Canary.\n3. Kayenta (the ACA engine) pulls 1,000+ metrics (CPU, memory, HTTP 500s, p99 latency) from both clusters for 30 minutes.\n4. It performs statistical T-tests on the metrics. If the Canary deviates negatively from the Baseline by more than a threshold, Spinnaker automatically kills the Canary and aborts the deploy. If it passes, it rolls out to 100%.\n\nTakeaway for Interviews:\nContinuous Deployment at scale relies entirely on observability. You cannot do CD without phenomenal, automated metric collection and alerting. Human validation does not scale."
+                    },
+                    {
+                        "title": "Deployment Strategy Matrix",
+                        "description": "Choose the correct deployment rollout strategy in an interview scenario based on risk tolerance and system state.",
+                        "code": "STRATEGY             | DOWNTIME | ROLLBACK SPEED | COST THOUGH DEPLOY | BEST USED FOR\n---------------------|----------|----------------|--------------------|-------------------------------------------------\nRecreate             | High     | Very Slow      | Normal             | Stateful legacy systems, Dev environments\nRolling Update       | Zero     | Slow           | Normal             | General microservices (Default K8s behavior)\nBlue/Green           | Zero     | Instant        | 2x Normal          | Critical high-traffic services, DB schema changes done carefully\nCanary               | Zero     | Fast           | Normal             | Extreme scale (FAANG), risky algorithm changes\nA/B Testing          | Zero     | N/A            | Normal             | Product validation (testing if a new button color increases sales)"
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch16.s02",
@@ -75,6 +106,13 @@
                     {
                         "term": "Distributed Tracing (Request Journey)",
                         "definition": "Follows a single request across multiple microservices. A trace consists of spans — each span represents one service's processing of the request. Span contains: trace_id (unique per request), span_id, parent_span_id, service name, operation, start time, duration, status, tags. The trace_id is propagated via HTTP headers (traceparent in W3C Trace Context, or X-B3-TraceId in Zipkin format) so every service logs the same trace_id. VISUALIZATION: Jaeger or Zipkin renders a waterfall graph showing how long each service took and the call sequence (Service A → Service B → Service C → Database). USE WHEN: debugging latency (which service is slow?), understanding dependencies (which services are called?), error tracing (which service caused the 500?). TOOLS: Jaeger, Zipkin, AWS X-Ray, Datadog APM. OpenTelemetry: vendor-neutral standard for metrics, logs, and traces — instrument once, send to any backend."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "SRE Alerting: PromQL for SLA Violation",
+                        "description": "A real-world Prometheus query to trigger a PagerDuty alert when the 99th percentile latency of the checkout API exceeds 500ms.",
+                        "code": "# Calculate the 99th percentile latency over the last 5 minutes\n# for the '/api/v1/checkout' endpoint.\nhistogram_quantile(\n  0.99, \n  sum by (le) (\n    rate(http_request_duration_seconds_bucket{path=\"/api/v1/checkout\"}[5m])\n  )\n) > 0.500\n\n# How SREs use this:\n# This query is placed in an Alertmanager rule. If this expression evaluates \n# to TRUE for more than 2 minutes (to ignore 5-second network blips), \n# Alertmanager fires a webhook to PagerDuty, which calls the on-call engineer's phone."
                     }
                 ]
             },
@@ -120,5 +158,13 @@
             "title": "OpenTelemetry Documentation",
             "url": "https://opentelemetry.io/docs/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "CI/CD Deployment Pipelines",
+        "description": "Blue/Green and Canary Deployment architectures.",
+        "data": {
+            "mermaid_source": "graph LR\n  Git[Git Push] --> Build[CI Server: Build Docker]\n  Build --> Test[Run Unit/Int Tests]\n  Test --> Registry[Push to ECR/DockerHub]\n  \n  Registry --> Deploy{Deployment Strategy}\n  Deploy --> |Blue/Green| BG[Spin up V2 Cluster, Swap LB instantly]\n  Deploy --> |Canary| C[Route 5% Traffic to V2, Monitor Error Rates]\n  C --> |If Healthy| 100P[Scale up to 100%]\n  C --> |If Broken| Rollback[Scale down to 0%, Restore V1]\n  \n  style Deploy fill:#d4af37,color:#000,stroke:#000,stroke-width:2px\n  style C fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd"
+        }
+    }
 }

@@ -1,0 +1,109 @@
+{
+    "id": "cs11",
+    "title": "Case Study: Amazon S3 / Object Storage",
+    "parent_id": null,
+    "order": 28,
+    "tags": [
+        "case-study",
+        "storage",
+        "cloud",
+        "s3",
+        "blob"
+    ],
+    "summary": "Design a globally distributed Object Storage system like Amazon S3 providing 11-nines (99.999999999%) durability, unlimited scale, and strong read-after-write consistency.",
+    "explanation": {
+        "overview": "Unlike Block Storage (EBS) or File Storage (EFS), Object Storage does not use a directory tree or block addresses. It is a massive, flat key-value store optimized for immutable unstructured data (videos, images, backups). The fundamental system design challenge of S3 is providing 11-nines of durability. This requires extreme geo-replication, background data-scrubbing, and decoupling the Metadata namespace from the actual Data payload.",
+        "how_it_works_internally": "INTERNAL Mechanics: S3 is split into the Namespace Storage (Metadata) and Object Storage (Data). When you upload `video.mp4`, the API Gateway hashes the file to verify integrity. It contacts the Namespace Service (backed by a highly consistent database like DynamoDB) to register the Object ID. The actual 5GB file is then split into chunks and pushed to the Data Service. The Data Service does not use standard RAID replication. It uses Reed-Solomon Erasure Coding, splitting the file into blocks + parity blocks distributed across dozens of physical racks in multiple Availability Zones. This allows the system to lose entire data centers without losing a single bit of your data.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "API Gateway Validation",
+                "detail": "Client initiates a PUT request. The gateway authenticates IAM credentials, checks bucket quotas, and receives the payload stream."
+            },
+            {
+                "step": 2,
+                "title": "Metadata Registration",
+                "detail": "The key (`mybucket/video.mp4`) is saved in the Namespace database, establishing an exclusive write lock to enforce strong read-after-write consistency (added to S3 in 2020)."
+            },
+            {
+                "step": 3,
+                "title": "Erasure Coding & Partitioning",
+                "detail": "The 5GB file is sliced into 10 data blocks, and mathematically processed to create 4 parity blocks. These 14 blocks are sprayed across 14 different servers in 3 Availability Zones."
+            },
+            {
+                "step": 4,
+                "title": "Background Scrubbing",
+                "detail": "Hard drives rot. Constantly running 'Scrubber' processes read random blocks, calculate checksums, and if bit-rot is detected, use the parity blocks to seamlessly reconstruct and heal the data on a new drive."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Erasure Coding",
+                "definition": "INTERNAL: A mathematical method (e.g., Reed-Solomon) of data protection. Instead of keeping 3 full copies of a 10GB file (30GB total), Erasure Coding splits it into 10 pieces and adds 4 parity pieces (total 14GB). Any 10 pieces can reconstruct the file, saving 50% storage costs while providing superior durability to 3x replication."
+            },
+            {
+                "term": "Strong vs Eventual Consistency",
+                "definition": "Historically S3 was eventually consistent (you could upload a file, list the bucket instantly, and not see it). In 2020, S3 was re-architected to use cache-coherence protocols to guarantee strong consistency on all PUTs and GETs without a latency penalty."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Multi-Part Upload Coordination",
+                "description": "Concrete Python logic demonstrating how the backend orchestrates a 50GB file upload by accepting parallel chunks.",
+                "code": "import hashlib\n\nactive_uploads = {} # Maps UploadID to received parts\n\ndef initiate_multipart_upload(object_key):\n    upload_id = generate_uuid()\n    active_uploads[upload_id] = {\"key\": object_key, \"parts\": []}\n    return upload_id\n    \ndef upload_part(upload_id, part_num, byte_data):\n    # Save physically to data nodes (Mocked)\n    etag = write_to_storage_nodes(byte_data)\n    active_uploads[upload_id][\"parts\"].append({\"num\": part_num, \"etag\": etag})\n    \ndef complete_multipart_upload(upload_id):\n    parts = active_uploads[upload_id][\"parts\"]\n    parts.sort(key=lambda x: x[\"num\"])\n    \n    # Verify contiguous parts exist and generate final master hash\n    master_hash = hashlib.md5(b\"\".join(p[\"etag\"] for p in parts)).hexdigest()\n    \n    # Finalize in Metadata DB to make it visible to GET requests\n    commit_to_namespace_db(active_uploads[upload_id][\"key\"], master_hash)\n    return True"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Java concurrent file downloader leveraging byte-range fetches.",
+                "code": "public class ParallelS3Downloader {\n    // Speed up downloads by pulling 5 parts of the file simultaneously from S3\n    public void downloadInParallel(String objectKey, int totalSize) {\n        ExecutorService pool = Executors.newFixedThreadPool(5);\n        int chunkSize = totalSize / 5;\n        \n        for (int i = 0; i < 5; i++) {\n            final int start = i * chunkSize;\n            final int end = (i == 4) ? totalSize : (start + chunkSize - 1);\n            pool.submit(() -> {\n                GetObjectRequest req = new GetObjectRequest(\"bucket\", objectKey)\n                        .withRange(start, end);\n                s3Client.getObject(req);\n            });\n        }\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: Storage Backends",
+                "description": "Evaluating replication vs erasure coding.",
+                "code": "OPTION 3x Blob Replication vs OPTION Erasure Coding (10/4)\n----------------------------------------------------------\nPros 3x Replication: Extremely fast CPU processing (just raw network copy), instantaneous reconstruction.\nCons 3x Replication: Horrendously expensive at the Exabyte scale (200% storage overhead).\nPros Erasure Coding: Extremely cheap (1.4x storage overhead), superior mathematical resilience to simultaneous multi-drive failure.\nCons Erasure Coding: Highly CPU intensive to calculate parity matrices. Reconstructing a missing block requires pulling data over the network from 10 different nodes, causing latency latency during degraded states."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Handling bit-rot and simultaneous AZ loss.",
+                "code": "try-catch fallback mechanics:\n1. ChecksumMismatchException: Upon downloading a chunk, the client hashes it. If the hash doesn't match the Metadata Database, silent bit-rot occurred on the hard drive. The S3 Gateway instantly discards the corrupted block, pulls a parity block from another rack, reconstructs the data in memory, returns it to the user, and triggers an asynchronous self-healing job on the degraded disk.\n2. Total Node Failure: S3 doesn't 'repair a disk'. When a 10TB disk dies, S3 doesn't write 10TB back to an empty disk on the same box (which takes days). It sprays the 10TB of lost parity pieces across 10,000 different disks in the cluster, completing the 'array rebuild' in minutes to minimize the vulnerability window."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (S3 Storage Classes)",
+            "default": "S3 Standard (High redundancy, sub-millisecond access)",
+            "effect": "Modify parameter to `S3 Glacier Deep Archive`.",
+            "tradeoff": "Glacier reduces storage costs by 95%. However, data retrieval shifts from milliseconds to 12 hours. Glacier physically writes the chunks to incredibly dense, slow tape-drives or spin-down hard disks, and powers down the server racks. Retrieval requires robotic arms to mount the tapes, hence the delay."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Handling massive concurrent uploads of the same key.",
+            "how": "Multi-Version Concurrency Control (MVCC) / Versioning. S3 does not physically overwrite objects. An 'overwrite' actually writes an entirely new object under the hood, with a new UUID. The Metadata DB simply re-points the user's `key.txt` to the new UUID, and marks the old UUID as a 'historical version' or deletes it asynchronously via garbage collection. This achieves lock-free massive concurrent writes."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Object Storage Architecture (Amazon S3)",
+        "description": "Namespace Decoupling and Erasure Coded Data Nodes.",
+        "data": {
+            "mermaid_source": "graph TD\n  Client --> |PUT /img.png| API[API Gateway]\n  API --> |Verify Auth| IAM((IAM Service))\n  API --> |Commit Lock| Namespace[(Metadata DB Cluster)]\n  API --> |Stream Bytes| DataPlane[Data Placement Engine]\n  \n  DataPlane --> |Calculate Parity| EC{Erasure Coder}\n  \n  EC --> |D1| Node1[Storage Rack AZ1]\n  EC --> |D2| Node2[Storage Rack AZ1]\n  EC --> |D3| Node3[Storage Rack AZ2]\n  EC --> |P1| Node4[Storage Rack AZ3]\n  \n  style Namespace fill:#ff9900\n  style EC fill:#4d4dff"
+        }
+    },
+    "limitations": [
+        "Small File Penalty: Storing 1 billion 1KB JSON files severely stresses the Namespace Database (Metadata IOPS) while wasting Data Node capacity (due to OS sector sizes). TWEAK: Batching proxies. App servers should compact 10,000 JSON files into a single 10MB Parquet block before uploading to S3.",
+        "List Objects Latency: The Metadata Database is a flat key-value store, not a filesystem tree. Running `aws s3 ls` essentially executes a slow string prefix scan across millions of keys. TWEAK: Maintain a parallel relational index (Amazon Macie or external DB) if you require complex querying or 'folder' traversals."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Ceph / MinIO",
+            "details": "The industry standard open-source equivalents to Amazon S3. They implement the exact same architecture principles (RADOS clusters, Erasure Coded pools) but can be run on bare-metal hardware."
+        },
+        {
+            "technology": "Reed-Solomon Codes",
+            "details": "The complex algebraic matrix math used originally in NASA deep-space probes and CDs to handle errors. Used in S3 to allow a file to suffer multiple simultaneous data center disk explosions without losing a single bit."
+        }
+    ]
+}

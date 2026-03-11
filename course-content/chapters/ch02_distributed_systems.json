@@ -42,7 +42,7 @@
                 "key_concepts": [
                     {
                         "term": "Vertical Scaling (Scale Up)",
-                        "definition": "Add more resources to a single machine — more CPU, RAM, SSD, faster network. EXAMPLE: upgrade from 16 GB RAM to 128 GB, or 4-core to 64-core CPU. PROS: simple (no code changes), no distributed system complexity, data consistency is easy (single machine). CONS: hardware limits (you can't buy a machine with 100 TB RAM), cost grows exponentially (a 64-core server costs more than 16× a 4-core), single point of failure (if this machine dies, everything dies). INDUSTRY USE: databases often scale vertically first — a beefier Postgres server can handle a lot more before you need sharding. Amazon RDS instances go up to 24 TB RAM and 128 vCPUs."
+                        "definition": "INTERNAL: Add more resources to a single machine — more CPU, RAM, SSD, faster network. EXAMPLE: upgrade from 16 GB RAM to 128 GB, or 4-core to 64-core CPU. PROS: simple (no code changes), no distributed system complexity, data consistency is easy (single machine). CONS: hardware limits (you can't buy a machine with 100 TB RAM), cost grows exponentially (a 64-core server costs more than 16× a 4-core), single point of failure (if this machine dies, everything dies). INDUSTRY USE: databases often scale vertically first — a beefier Postgres server can handle a lot more before you need sharding. Amazon RDS instances go up to 24 TB RAM and 128 vCPUs."
                     },
                     {
                         "term": "Horizontal Scaling (Scale Out)",
@@ -58,10 +58,24 @@
                         "title": "Netflix Scaling Pattern",
                         "description": "Netflix serves 250M+ subscribers. Their microservices (100+) run on thousands of EC2 instances with auto-scaling. During peak hours (8-11 PM), auto-scaling adds instances. At 3 AM, it removes them. Databases use a mix: Aurora (relational, vertically scaled up to db.r5.24xlarge) for user accounts, Cassandra (horizontally scaled, 1000+ nodes) for viewing history/recommendations.",
                         "code": ""
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
                     }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch02.s02",
@@ -91,6 +105,13 @@
                     {
                         "term": "Failover Strategies",
                         "definition": "Active-Passive (warm standby): primary handles traffic, standby replicates data. On primary failure, standby takes over (seconds to minutes). Active-Active: both nodes serve traffic simultaneously. On failure of one, the other absorbs its load. More complex (must handle conflicts) but zero-downtime failover. Multi-Region Active-Active: deploy in 2+ AWS regions. Route 53 health checks route traffic away from unhealthy regions automatically. This is how AWS, Google, and Netflix achieve five nines."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "AWS DynamoDB Outage Case Study (Cascading Failure)",
+                        "description": "A textbook example of how a failure in a foundational service (DNS/Metadata) can cascade and take down a global distributed database.",
+                        "code": "What Happened:\nAn underlying sub-system responsible for metadata and DNS management experienced a latent race condition. When a network partition occurred, nodes began heavily querying the DNS management system to re-establish topology.\n\nThe Cascade:\nThe overwhelming query volume overwhelmed the metadata service, causing it to drop requests. Because nodes couldn't get metadata, they assumed more nodes had failed, sending EVEN MORE metadata requests. This recursive retry loop acts as a self-inflicted Distributed Denial of Service (DDoS) attack.\n\nTakeaway for Interviews:\nAlways discuss 'Thundering Herds' and Cascading Failures. The fix is to implement strict Circuit Breakers and Exponential Backoff + Jitter on all internal inter-service retries."
                     }
                 ]
             },
@@ -174,6 +195,13 @@
                         "term": "Monotonic Reads",
                         "definition": "Once a user sees a value at time T, they never see an older value on subsequent reads. Without this, a user might see their feed at 10:00 AM, refresh and see it at 9:55 AM (reading from a lagging replica), then refresh again and see 10:00 AM. IMPLEMENTATION: pin the user to a specific replica (sticky sessions) or track the user's last-seen timestamp and only serve from replicas at least as fresh."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Implementing Tunable Consistency (Quorum Read) in Python",
+                        "description": "How a masterless distributed database (like Cassandra) resolves conflicts during a Read operation when W + R > N.",
+                        "code": "import asyncio\n\n# Simulating network calls to 3 replicas (N=3)\nasync def fetch_from_replica(replica_id, key):\n    # Returns (value, vector_clock_timestamp)\n    await asyncio.sleep(0.05)\n    # Simulating divergent state: replica 3 has stale data\n    if replica_id == 3:\n        return {\"value\": \"old_state\", \"ts\": 100}\n    return {\"value\": \"new_state\", \"ts\": 105}\n\nasync def quorum_read(key, R=2):\n    # Fire requests to all 3 replicas, but we only wait for R (2) responses\n    tasks = [fetch_from_replica(i, key) for i in range(1, 4)]\n    \n    # asyncio.as_completed yields results as they arrive\n    responses = []\n    for coro in asyncio.as_completed(tasks):\n        result = await coro\n        responses.append(result)\n        if len(responses) == R:\n            break # Short-circuit once we satisfy the Read Quorum!\n            \n    # Conflict Resolution: Return the response with the highest timestamp (LWW)\n    best_response = max(responses, key=lambda x: x['ts'])\n    print(f\"Read Quorum satisfied. Winning value: {best_response['value']}\")\n    return best_response['value']\n\nasyncio.run(quorum_read('user:123', R=2))"
+                    }
                 ]
             },
             "links": [
@@ -198,6 +226,39 @@
                 }
             ],
             "children": []
+        },
+        {
+            "id": "ch02.s05",
+            "title": "Distributed Systems Evaluation Checklist & Decision Matrices",
+            "parent_id": "ch02",
+            "order": 5,
+            "tags": [
+                "checklist",
+                "matrix",
+                "evaluation"
+            ],
+            "summary": "A rubric-based checklist to evaluate the fault tolerance and scalability of your distributed architecture.",
+            "explanation": {
+                "overview": "Before presenting your final architecture to the interviewer, run it through this mental checklist to catch common distributed systems design flaws.",
+                "key_concepts": [
+                    {
+                        "term": "The Retry Storm (Thundering Herd) Test",
+                        "definition": "If the database goes down for 5 seconds and 10,000 requests stack up, what happens when it comes back online? Without Jitter and Exponential Backoff, the system will immediately crash again."
+                    },
+                    {
+                        "term": "The Network Partition Test",
+                        "definition": "If the network cable between AZ-1 and AZ-2 is cut, does the system halt entirely, or does it degrade gracefully (serve stale data from cache)?"
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Decision Matrix: Scaling Strategy",
+                        "description": "How to choose between vertical and horizontal scaling during an interview.",
+                        "code": "SCENARIO                          | SCALE STRATEGY | WHY\n----------------------------------|----------------|------------------------------------------\n100,000 DAU MVP App               | Vertical       | Cheaper, simpler, fits on one strong server.\nStateless API Gateway layer       | Horizontal     | Trivially parallelizable behind an LB.\nStateful Relational Database      | Vertical First | Sharding a relational DB is an absolute last resort.\nBackground Job Queue Processing   | Horizontal     | Consumer groups easily scale horizontally."
+                    }
+                ]
+            },
+            "children": []
         }
     ],
     "references": [
@@ -213,5 +274,13 @@
             "title": "Netflix Tech Blog — Chaos Engineering",
             "url": "https://netflixtechblog.com/tagged/chaos-engineering"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Distributed Systems Characteristics",
+        "description": "Fault tolerance and horizontal scalability across multiple data centers.",
+        "data": {
+            "mermaid_source": "graph TD\n  LB[Global Load Balancer] --> DC1[Data Center US-East]\n  LB --> DC2[Data Center EU-West]\n  LB --> DC3[Data Center AP-South]\n  \n  subgraph DC1\n    API1[API Cluster] --> DB1[(Primary DB)]\n  end\n  subgraph DC2\n    API2[API Cluster] --> DB2[(Replica DB)]\n  end\n  subgraph DC3\n    API3[API Cluster] --> DB3[(Replica DB)]\n  end\n  \n  DB1 -.->|Async Replication| DB2\n  DB1 -.->|Async Replication| DB3\n  \n  style LB fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style DB1 fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd"
+        }
+    }
 }

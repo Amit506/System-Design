@@ -28,7 +28,7 @@ function App() {
   return (
     <div className="app-shell dark-theme">
       <nav className="top-nav glass-nav">
-        <div className="top-nav-brand">
+        <div className="top-nav-brand" onClick={() => setActiveDoc(null)} style={{ cursor: 'pointer' }}>
           <div className="brand-icon"><Zap size={18} strokeWidth={2.5} /></div>
           <span className="brand-name">System <span className="brand-accent">Design</span></span>
           <span className="brand-tag glow-tag">PRO</span>

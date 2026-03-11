@@ -13,7 +13,7 @@
     ],
     "summary": "Master object-oriented programming, SOLID principles, GoF design patterns, and Domain-Driven Design (DDD) tactical patterns with real-world code examples and use cases.",
     "explanation": {
-        "overview": "Low-Level Design (LLD) focuses on the internal structure of a single component \u2014 class hierarchies, design patterns, database schemas, and API contracts. While High-Level Design (HLD) asks 'what components do we need?', LLD asks 'how do we build each component?' LLD interviews test your ability to write clean, extensible, maintainable code that follows established industry principles.",
+        "overview": "Low-Level Design (LLD) focuses on the internal structure of a single component — class hierarchies, design patterns, database schemas, and API contracts. While High-Level Design (HLD) asks 'what components do we need?', LLD asks 'how do we build each component?' LLD interviews test your ability to write clean, extensible, maintainable code that follows established industry principles.",
         "how_it_works_internally": "In an LLD interview (45-60 min), you are typically asked to design a specific component: a parking lot, an elevator system, a chess game, an LRU cache, or a rate limiter. You must produce class diagrams, identify entities, define relationships, apply relevant design patterns, and write working code. The evaluation focuses on extensibility (can new features be added without modifying existing code?), separation of concerns, and correct use of modern patterns."
     },
     "children": [
@@ -34,7 +34,7 @@
                 "key_concepts": [
                     {
                         "term": "Encapsulation",
-                        "definition": "Bundle data (fields) and methods into a single unit (class), and restrict direct access to internal state. External code interacts through public methods, preventing invalid state transitions. INDUSTRY TWEAK: Prefer immutable objects where possible (Java Records, Python dataclasses). Once created, state cannot change, eliminating entire categories of bugs like race conditions."
+                        "definition": "INTERNAL: Bundle data (fields) and methods into a single unit (class), and restrict direct access to internal state. External code interacts through public methods, preventing invalid state transitions. INDUSTRY TWEAK: Prefer immutable objects where possible (Java Records, Python dataclasses). Once created, state cannot change, eliminating entire categories of bugs like race conditions."
                     },
                     {
                         "term": "Inheritance",
@@ -54,10 +54,16 @@
                         "title": "Composition over Inheritance (TypeScript)",
                         "description": "Instead of a `Bird` class inheriting from `Animal` and a `RubberDuck` inheriting from `Bird` (which would awkwardly inherit a `fly()` method it shouldn't have), we compose behaviors.",
                         "code": "interface FlyBehavior {\n  fly(): void;\n}\n\nclass FlyWithWings implements FlyBehavior {\n  fly() { console.log('Flapping wings!'); }\n}\n\nclass NoFly implements FlyBehavior {\n  fly() { console.log('Cannot fly.'); }\n}\n\nclass Duck {\n  constructor(private flyBehavior: FlyBehavior) {}\n  \n  performFly() {\n    this.flyBehavior.fly();\n  }\n}\n\nconst mallard = new Duck(new FlyWithWings());\nmallard.performFly(); // Flapping wings!\n\nconst rubberDuck = new Duck(new NoFly());\nrubberDuck.performFly(); // Cannot fly."
+                    },
+                    {
+                        "title": "Real-World Architecture Decision Record (ADR): Composition vs Inheritance",
+                        "description": "How a FAANG engineer documents an LLD design choice in an interview or design doc.",
+                        "code": "# ADR: Notification System Class Design\n\n## Context\nWe are building a Notification Service that sends Email, SMS, and Push notifications. Some notifications are urgent, some are batched.\n\n## Options Considered\n1. Deep Inheritance: `UrgentEmailNotification extends EmailNotification extends BaseNotification`\n2. Composition: `Notification(DeliveryStrategy, PriorityStrategy)`\n\n## Decision\nWe chose **Composition**. \n\n## Consequences\n* **Positive**: O(1) class scale. If we add 'Slack' and 'Delayed', we don't need a `DelayedSlackNotification` class. We just pass new strategies into the base `Notification` container.\n* **Negative**: Slightly higher memory overhead due to multiple strategy object allocations per notification."
                     }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch01.s02",
@@ -121,7 +127,7 @@
             ],
             "summary": "The most frequently tested design patterns with internal mechanics, real-world constraints, and interview scenarios.",
             "explanation": {
-                "overview": "Design patterns are reusable solutions to common software design problems. In interviews, applying the right pattern shows maturity. Do not force them; use them when the problem demands extensibility."
+                "overview": "Design patterns are reusable solutions to common software design problems. In interviews, applying the right pattern shows maturity. Do not force them; use them when the problem demands extensibility. In FAANG interviews, interviewers evaluate your language pragmatism. Java demands rigid interfaces and classes for patterns. Python's dynamic nature (functions as first-class citizens, duck typing) often renders explicit GoF patterns unnecessary or syntactically lighter."
             },
             "children": [
                 {
@@ -129,7 +135,11 @@
                     "title": "Creational Patterns",
                     "parent_id": "ch01.s03",
                     "order": 1,
-                    "tags": ["singleton", "factory", "builder"],
+                    "tags": [
+                        "singleton",
+                        "factory",
+                        "builder"
+                    ],
                     "explanation": {
                         "key_concepts": [
                             {
@@ -176,7 +186,11 @@
                     "title": "Structural Patterns",
                     "parent_id": "ch01.s03",
                     "order": 2,
-                    "tags": ["adapter", "facade", "decorator"],
+                    "tags": [
+                        "adapter",
+                        "facade",
+                        "decorator"
+                    ],
                     "explanation": {
                         "key_concepts": [
                             {
@@ -213,7 +227,11 @@
                     "title": "Behavioral Patterns",
                     "parent_id": "ch01.s03",
                     "order": 3,
-                    "tags": ["strategy", "observer", "state"],
+                    "tags": [
+                        "strategy",
+                        "observer",
+                        "state"
+                    ],
                     "explanation": {
                         "key_concepts": [
                             {
@@ -250,6 +268,11 @@
                     },
                     "children": []
                 }
+            ],
+            "limitations": [
+                "Language Over-engineering: Forcing Java-style strict object-oriented patterns into dynamic languages like Python or JavaScript often leads to unreadable \"accidental complexity\".",
+                "Pattern Blindness: Trying to fit a problem to a pattern rather than applying a pattern to solve a problem. If simple procedural code or functional composition solves it cleanly, don't force a Strategy pattern.",
+                "Singleton Testing Bottleneck: Singletons hold global state, which severely complicates unit testing because state bleeds across test cases."
             ]
         },
         {
@@ -336,7 +359,7 @@
                     {
                         "step": 6,
                         "title": "Code with Concurrency edge cases",
-                        "detail": "Two cars arriving simultaneously trying to park in the last spot \u2014 use `ConcurrentHashMap` or a `ReadWriteLock` on spot assignment."
+                        "detail": "Two cars arriving simultaneously trying to park in the last spot — use `ConcurrentHashMap` or a `ReadWriteLock` on spot assignment."
                     }
                 ]
             },
@@ -385,6 +408,39 @@
                 ]
             },
             "children": []
+        },
+        {
+            "id": "ch01.s07",
+            "title": "LLD Evaluation Checklist & Decision Matrices",
+            "parent_id": "ch01",
+            "order": 7,
+            "tags": [
+                "checklist",
+                "matrix",
+                "evaluation"
+            ],
+            "summary": "A rubric-based checklist to self-evaluate your Low-Level Design before finishing the interview.",
+            "explanation": {
+                "overview": "Top candidates review their own designs before the interviewer points out flaws. Use this checklist to validate your LLD.",
+                "key_concepts": [
+                    {
+                        "term": "The 'Add a Feature' Test",
+                        "definition": "If the interviewer asks 'Now add support for Crypto Payments', do you have to modify 5 existing classes, or just add 1 new class? If it's 5, you failed the Open/Closed Principle."
+                    },
+                    {
+                        "term": "The Concurrency Test",
+                        "definition": "If two threads call your `bookTicket()` method at the exact same millisecond, what breaks? Have you identified the critical section and protected it with a Lock or Concurrent structure?"
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Decision Matrix: Creational Patterns",
+                        "description": "How to choose a creational pattern under interview pressure.",
+                        "code": "SCENARIO                          | PATTERN TO USE       | WHY\n----------------------------------|----------------------|------------------------------------------\n1 DB connection pool for the app  | Singleton            | Global access, costly to instantiate.\nChoosing UI theme at runtime      | Factory Method       | Hides `if/else` instantiation logic.\nCreating an HTTP Request          | Builder              | 10+ optional parameters, prevents giant constructor.\nCopying a complex object          | Prototype            | Cheaper than creating from scratch via DB."
+                    }
+                ]
+            },
+            "children": []
         }
     ],
     "references": [
@@ -400,5 +456,13 @@
             "title": "Refactoring.Guru — Design Patterns",
             "url": "https://refactoring.guru/design-patterns"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Low-Level Design Patterns",
+        "description": "Visualizing the relationship between Factories, Singletons, and Strategy Patterns.",
+        "data": {
+            "mermaid_source": "classDiagram\n  class System {\n    +process()\n  }\n  class Factory {\n    +create() Object\n  }\n  class Singleton {\n    -instance\n    +getInstance()\n  }\n  class Strategy {\n    <<interface>>\n    +execute()\n  }\n  class ConcreteStrategyA\n  class ConcreteStrategyB\n  \n  System --> Factory : Uses\n  System --> Singleton : Access\n  System --> Strategy : Delegates\n  Strategy <|.. ConcreteStrategyA\n  Strategy <|.. ConcreteStrategyB\n  \n  style System fill:#d4af37,stroke:#000,stroke-width:2px,color:#000\n  style Strategy fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd"
+        }
+    }
 }

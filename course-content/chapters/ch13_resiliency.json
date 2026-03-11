@@ -33,7 +33,7 @@
                 "key_concepts": [
                     {
                         "term": "Circuit Breaker (3-State Machine)",
-                        "definition": "CLOSED (normal): requests pass through. Track failure count. When failures reach threshold (e.g., 5 failures in 60 seconds), transition to OPEN. OPEN: all requests fail immediately (fast-fail) without calling the downstream service. After a timeout period (e.g., 30 seconds), transition to HALF-OPEN. HALF-OPEN: allow ONE probe request through. If it succeeds, transition back to CLOSED (service recovered). If it fails, transition back to OPEN (still down). INTERNAL STATE: {state: CLOSED|OPEN|HALF_OPEN, failure_count: int, last_failure_time: timestamp, success_count_in_half_open: int}. CONFIGURABLE: failure_threshold (5), timeout_duration (30s), success_threshold_in_half_open (3). WHY: prevents cascading failures. If Service B is down, Service A's circuit breaker fast-fails instead of timing out on every request (saving thread pool resources and response time). TOOLS: Resilience4j (Java), Polly (.NET), Hystrix (deprecated Netflix), Envoy (built-in circuit breaking)."
+                        "definition": "INTERNAL: CLOSED (normal): requests pass through. Track failure count. When failures reach threshold (e.g., 5 failures in 60 seconds), transition to OPEN. OPEN: all requests fail immediately (fast-fail) without calling the downstream service. After a timeout period (e.g., 30 seconds), transition to HALF-OPEN. HALF-OPEN: allow ONE probe request through. If it succeeds, transition back to CLOSED (service recovered). If it fails, transition back to OPEN (still down). INTERNAL STATE: {state: CLOSED|OPEN|HALF_OPEN, failure_count: int, last_failure_time: timestamp, success_count_in_half_open: int}. CONFIGURABLE: failure_threshold (5), timeout_duration (30s), success_threshold_in_half_open (3). WHY: prevents cascading failures. If Service B is down, Service A's circuit breaker fast-fails instead of timing out on every request (saving thread pool resources and response time). TOOLS: Resilience4j (Java), Polly (.NET), Hystrix (deprecated Netflix), Envoy (built-in circuit breaking)."
                     },
                     {
                         "term": "Retry with Exponential Backoff + Jitter",
@@ -47,9 +47,35 @@
                         "term": "Timeout with Deadline Propagation",
                         "definition": "ALWAYS set timeouts on every external call. Without timeouts, a hung downstream service blocks your threads indefinitely. DEADLINE PROPAGATION: pass the remaining time budget downstream. If the client set a 5-second deadline and your service spent 2 seconds so far, pass 3 seconds to the downstream call. If the downstream can't complete in 3 seconds, it fast-fails. gRPC has built-in deadline propagation. For REST: pass deadline as a header (X-Request-Deadline: unix_timestamp)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix Chaos Engineering & Hystrix Fallbacks",
+                        "description": "How Netflix built the Simian Army to intentionally break production systems, forcing developers to build resilient software.",
+                        "code": "The Problem:\nWhen Netflix migrated to AWS, they realized that in a massive distributed environment, EC2 instances drop, networks partition, and downstream dependencies periodically fail. Assuming 99.9% availability per microservice, a call chain of 100 microservices yields only 90.4% total uptime.\n\nThe Architecture (Hystrix & Chaos Monkey):\n1. The Hystrix Circuit Breaker: Netflix built 'Hystrix' to wrap every external call in a circuit breaker with a strict timeout and an isolated thread pool (Bulkhead pattern). If a downstream recommendation service hung, Hystrix would instantly fast-fail the request rather than exhausting Netflix's Tomcat connection pool.\n2. Graceful Fallbacks: When Hystrix tripped, it didn't just throw an error. It triggered a fallback function. If the 'personalized recommendations' service failed, Hystrix returned an old cached list, or a hardcoded list of 'Top 10 Globally' movies. The user never saw an error.\n3. Chaos Monkey: To guarantee these fallbacks actually worked, Netflix created Chaos Monkey, a script that randomly terminated production EC2 instances during business hours. This forced engineers to design stateless, resilient microservices where the loss of any single node was invisible to the user.\n\nTakeaway for Interviews:\nTrue resiliency isn't about preventing servers from going down; it's about anticipating failure. Always design 'degraded modes.' If the search system fails, can you offer a basic category browse? If the database fails, can you serve a stale cache?"
+                    },
+                    {
+                        "title": "Circuit Breaker Implementation in Python",
+                        "description": "A bare-bones implementation of the 3-state Circuit Breaker state machine (Closed, Open, Half-Open).",
+                        "code": "import time\nimport random\nfrom enum import Enum\n\nclass State(Enum):\n    CLOSED = 1\n    OPEN = 2\n    HALF_OPEN = 3\n\nclass CircuitBreaker:\n    def __init__(self, failure_threshold=3, recovery_timeout=5):\n        self.state = State.CLOSED\n        self.failure_threshold = failure_threshold\n        self.recovery_timeout = recovery_timeout\n        self.failures = 0\n        self.last_failure_time = None\n\n    def call(self, func, *args, **kwargs):\n        if self.state == State.OPEN:\n            if time.time() - self.last_failure_time > self.recovery_timeout:\n                print(\"Timeout elapsed. State -> HALF_OPEN. Allowing 1 test request.\")\n                self.state = State.HALF_OPEN\n            else:\n                raise Exception(\"Circuit is OPEN. Fast-failing request.\")\n\n        try:\n            result = func(*args, **kwargs)\n            \n            if self.state == State.HALF_OPEN:\n                print(\"Half-Open test succeeded! State -> CLOSED. Resetting counters.\")\n                self.state = State.CLOSED\n                self.failures = 0\n            return result\n            \n        except Exception as e:\n            self.failures += 1\n            self.last_failure_time = time.time()\n            print(f\"Call failed. Failure {self.failures}/{self.failure_threshold}.\")\n            \n            if self.failures >= self.failure_threshold:\n                print(\"Threshold reached! State -> OPEN.\")\n                self.state = State.OPEN\n            raise e\n\n# Usage:\n# cb = CircuitBreaker()\n# try:\n#     result = cb.call(fetch_data_from_flakey_payment_api, payload)\n# except Exception:\n#     result = get_cached_fallback_data()"
+                    },
+                    {
+                        "title": "Resiliency Pattern Decision Matrix",
+                        "description": "Which fault-tolerance pattern to apply in an interview based on the failure behavior of the downstream dependency.",
+                        "code": "FAILURE SCENARIO             | CORRECT PATTERN           | DESCRIPTION\n-----------------------------|---------------------------|----------------------------------------------------\nTransient Network Glitch     | Retry with Jitter/Backoff | Retry immediately, then wait longer. Add jitter to prevent storm.\nDownstream DB is Dead        | Circuit Breaker           | Stop calling it. Fast-fail immediately. Periodically test (Half-Open).\nSlow / Hung Downstream       | Timeouts + Bulkheads      | Strict deadlines. Isolate thread pools so a slow service doesn't drain caller.\nSudden Traffic Spike         | Rate Limiting / Load Shed | Drop requests shedding bottom-tier traffic to save core infrastructure.\nUnavailable Crucial Service  | Graceful Fallback         | Serve stale cache, default data, or simplified UI instead of 500 Error."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch13.s02",
@@ -128,5 +154,13 @@
             "title": "OAuth 2.0 RFC 6749",
             "url": "https://datatracker.ietf.org/doc/html/rfc6749"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Circuit Breaker Pattern",
+        "description": "Failing fast to prevent cascading system collapse.",
+        "data": {
+            "mermaid_source": "stateDiagram-v2\n  [*] --> Closed: Service Healthy\n  Closed --> Open: Errors > Threshold (e.g. 50%)\n  Open --> HalfOpen: Timeout Elapsed (30s)\n  HalfOpen --> Closed: Success (Ping passes)\n  HalfOpen --> Open: Failure (Still broken)\n  \n  note left of Closed\n    Pass Requests Normally\n  end note\n  note right of Open\n    Fail Fast! (Return 503 Instantly)\n  end note\n  note right of HalfOpen\n    Let 1 request through to test\n  end note"
+        }
+    }
 }

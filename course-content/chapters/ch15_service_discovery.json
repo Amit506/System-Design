@@ -32,7 +32,7 @@
                 "key_concepts": [
                     {
                         "term": "What is a Container?",
-                        "definition": "A container is NOT a lightweight VM. It's a regular Linux process isolated using two kernel features: (1) Namespaces: isolate what the process can SEE. PID namespace: process sees only its own processes (PID 1 inside container). Network namespace: process gets its own network stack (virtual NIC, IP, port space). Mount namespace: process has its own filesystem view. User namespace: UID 0 inside container ≠ UID 0 on host (rootless containers). (2) cgroups (Control Groups): limit what the process can USE. CPU: cpu.max (e.g., 200000 100000 = 2 CPU cores). Memory: memory.max (512 MB hard limit — exceeded = OOM kill). I/O: io.max (bandwidth and IOPS limits). Together: the process thinks it has its own isolated machine, but it's actually sharing the host kernel."
+                        "definition": "INTERNAL: A container is NOT a lightweight VM. It's a regular Linux process isolated using two kernel features: (1) Namespaces: isolate what the process can SEE. PID namespace: process sees only its own processes (PID 1 inside container). Network namespace: process gets its own network stack (virtual NIC, IP, port space). Mount namespace: process has its own filesystem view. User namespace: UID 0 inside container ≠ UID 0 on host (rootless containers). (2) cgroups (Control Groups): limit what the process can USE. CPU: cpu.max (e.g., 200000 100000 = 2 CPU cores). Memory: memory.max (512 MB hard limit — exceeded = OOM kill). I/O: io.max (bandwidth and IOPS limits). Together: the process thinks it has its own isolated machine, but it's actually sharing the host kernel."
                     },
                     {
                         "term": "Docker Image Layers",
@@ -42,9 +42,17 @@
                         "term": "container vs VM",
                         "definition": "VM: runs a full guest OS on a hypervisor. Each VM has its own kernel — complete isolation. Boot time: 30-60 seconds. Overhead: 200-500 MB per VM. Container: shares the host kernel. Isolation via namespaces/cgroups — lighter but less isolated than VMs. Boot time: < 1 second. Overhead: < 10 MB. Trade-off: VMs for multi-tenant isolation (cloud providers isolate customers with VMs). Containers for microservice deployment (same trust boundary, shared kernel). AWS Firecracker: micro-VMs — VM-level isolation with container-like speed (boot in 125ms). Used by AWS Lambda and Fargate."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": []
         },
         {
             "id": "ch15.s02",
@@ -105,6 +113,23 @@
                         "term": "Service Mesh (Istio/Envoy)",
                         "definition": "Deploy a sidecar proxy (Envoy) alongside every service pod. All network traffic goes through the sidecar. The mesh provides: mTLS (automatic encryption between services), traffic management (canary deployments — route 5% to v2, 95% to v1), observability (distributed tracing, request metrics per service-pair), circuit breaking, retries, timeout — ALL without changing application code. CONTROL PLANE (Istiod): configures all sidecar proxies centrally. Creates routing rules, distributes certificates, collects telemetry. DATA PLANE: Envoy sidecars intercept all traffic. OVERHEAD: ~2-5ms latency per hop, ~50 MB memory per sidecar. WHEN TO USE: large microservice architectures (>20 services) where cross-cutting concerns (security, observability, traffic management) are too complex to implement in each service."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix Architecture: From Eureka to Envoy",
+                        "description": "The evolution of service discovery at Netflix, from client-side Java libraries (Eureka) to a language-agnostic Service Mesh (Envoy).",
+                        "code": "The Past (Client-Side Discovery):\nIn the early 2010s, Netflix built 'Eureka' (Service Registry) and 'Ribbon' (Client-side Load Balancer). When a Java microservice booted up, it registered its IP with Eureka. When Service A wanted to call Service B, Service A's Ribbon library fetched the list of Service B's IPs from Eureka and picked one using Round Robin. This was revolutionary, but it required every microservice to run the JVM and include complex Netflix jar files.\n\nThe Present (Service Mesh with Envoy):\nAs Netflix adopted Node.js, Python, and Go, maintaining client-side libraries in every language became impossible. They transitioned to a Service Mesh. Today, a C++ sidecar proxy called 'Envoy' runs next to every microservice container. \n\nHow it works now:\nIf the Python 'RecommendationService' wants to call the Java 'UserService', it simply makes a standard local HTTP call to `http://localhost:8080/users`. The Envoy sidecar intercepts this localhost call, looks up the destination in the central control plane, handles mTLS encryption, performs retries, and routes the traffic to a healthy UserService instance over the network. The Python app is completely unaware of the network topology."
+                    },
+                    {
+                        "title": "Service Discovery Registry Implementation (Python + Redis)",
+                        "description": "A conceptual snippet showing how services register themselves via heartbeats using Redis expiration keys.",
+                        "code": "import redis\nimport time\nimport threading\n\nclass ServiceRegistry:\n    def __init__(self, redis_host='localhost'):\n        self.r = redis.Redis(host=redis_host, decode_responses=True)\n    \n    def register_service(self, service_name, instance_ip, ttl_seconds=10):\n        # 1. Register the instance with a TTL.\n        # If the instance crashes and stops heartbeating, Redis auto-deletes it.\n        key = f\"service:{service_name}:{instance_ip}\"\n        self.r.setex(key, ttl_seconds, \"ALIVE\")\n        \n        # 2. Add to a set so we can find all IPs for a service\n        self.r.sadd(f\"discovery:{service_name}\", instance_ip)\n\n    def get_healthy_instances(self, service_name):\n        # 1. Get all registered IPs for this service\n        ips = self.r.smembers(f\"discovery:{service_name}\")\n        \n        healthy_ips = []\n        for ip in ips:\n            # 2. Check if the heartbeat key still exists\n            if self.r.exists(f\"service:{service_name}:{ip}\"):\n                healthy_ips.append(ip)\n            else:\n                # 3. Clean up dead instances\n                self.r.srem(f\"discovery:{service_name}\", ip)\n                \n        return healthy_ips\n\n# Usage in a background thread of a microservice:\n# def heartbeat():\n#     while True:\n#         registry.register_service(\"payment-api\", \"10.0.1.45\")\n#         time.sleep(5)  # Send heartbeat every 5 seconds"
+                    },
+                    {
+                        "title": "API Gateway vs Service Mesh Decision Matrix",
+                        "description": "Clarify the boundaries between North-South (Gateway) and East-West (Mesh) traffic management.",
+                        "code": "FEATURE                          | API GATEWAY (e.g., AWS API Gateway) | SERVICE MESH (e.g., Istio / Envoy) \n---------------------------------|-----------------------------------|------------------------------------\nTraffic Direction                | North-South (Client to Cluster)   | East-West (Service to Service)\nPrimary Purpose                  | Aggregation, Auth, Rate Limiting  | mTLS, Retries, Circuit Breaking, Tracing\nKnows about User Sessions?       | Yes (Validates external JWTs)     | No (Usually deals with internal IAM)\nDeployment Model                 | Centralized Cluster at Edge       | Distributed Sidecars per Pod\nProtocol Support                 | Mostly HTTP / REST / GraphQL      | HTTP, gRPC, TCP, Redis, Mongo\nDo you need both?                | YES. They serve different layers. | YES. Gateways handle edge, Mesh handles internal."
+                    }
                 ]
             },
             "children": []
@@ -123,5 +148,13 @@
             "title": "Istio Documentation",
             "url": "https://istio.io/latest/docs/"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Service Discovery & Registration",
+        "description": "Consul/ZooKeeper dynamically updating routing tables.",
+        "data": {
+            "mermaid_source": "sequenceDiagram\n  participant S as Microservice Instance\n  participant SD as Service Registry (Consul)\n  participant G as API Gateway\n  \n  S->>SD: 1. Register (IP: 10.0.0.5, Port: 8080)\n  SD-->>S: OK + Health Check Init\n  G->>SD: 2. Watch for changes\n  S->>SD: 3. Ping (Heartbeat)\n  \n  note over S,SD: If Service Crashes, Heartbeats Stop\n  S-xSD: JVM Crash\n  SD->>G: 4. Unregister 10.0.0.5\n  G->>G: 5. Remove from LB Table"
+        }
+    }
 }

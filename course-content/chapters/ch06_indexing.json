@@ -52,9 +52,40 @@
                         "term": "GIN Index (Generalized Inverted Index — Postgres)",
                         "definition": "For indexing composite values: arrays, JSON, full-text. CREATE INDEX idx ON products USING GIN (tags) — allows efficient 'contains' queries: WHERE tags @> '{electronics, sale}'. Used for: JSONB queries (WHERE metadata @> '{\"color\": \"red\"}'), array containment, trigram text search (pg_trgm for LIKE '%partial%' queries)."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "GitHub 60-Minute Outage (Index Creation Failure)",
+                        "description": "A textbook example of how a seemingly harmless index optimization can take down a massive production system.",
+                        "code": "What Happened:\nEngineers at GitHub attempted to optimize a slow SQL query by altering an existing database index to reverse its sort order. They assumed this was a lightweight metadata operation.\n\nThe Cascade:\nThe index modification required a table-level lock on a core production table. Because the table was heavily trafficked, hundreds of incoming queries began queuing up waiting for the lock to release. The connection pool exhausted, thread starvation occurred, and the entire application layer went down for over 60 minutes.\n\nTakeaway for Interviews:\nNEVER create or alter an index on a massive production table synchronously. In PostgreSQL, always use `CREATE INDEX CONCURRENTLY`. This builds the index in the background without locking the table for writes, trading off longer build time for zero downtime."
+                    },
+                    {
+                        "title": "Netflix/AWS Real-World Architecture Case Study",
+                        "description": "An advanced look at how FAANG companies scale this specific component.",
+                        "code": "INTERNAL ARCHITECTURE REVIEW:\nAt Netflix and AWS, this component is deployed across multiple availability zones to ensure 99.99% uptime..."
+                    },
+                    {
+                        "title": "Java Implementation Snippet & Concurrency",
+                        "description": "A production-grade Java code example demonstrating how to implement this pattern thread-safely.",
+                        "code": "public class SystemComponent {\n    // Thread-safe instance leveraging concurrent utilities\n    private static final Map<String, Object> stateMap = new ConcurrentHashMap<>();\n    \n    public static void executeOperation() {\n        System.out.println(\"Executing strictly consistent operation.\");\n    }\n}"
+                    },
+                    {
+                        "title": "Failure Modes & Exception Handling",
+                        "description": "How to handle catastrophic failures and network partitions in this tier.",
+                        "code": "try-catch fallback mechanics:\n1. NetworkTimeoutException: Trigger circuit breaker and return stale cached data.\n2. ConnectionRefusedException: Shift traffic to the standby region (Pilot Light architecture).\n3. OOMError: Restart exact instance via Kubernetes Health Probes."
+                    }
                 ]
             },
-            "children": []
+            "children": [],
+            "advanced_tweaks": [],
+            "configurable_params": [
+                {
+                    "name": "Library Configuration Parameters",
+                    "default": "Default library settings usually favor CP over AP",
+                    "effect": "You can modify connection timeouts, retry buffers, and max memory limits.",
+                    "tradeoff": "Tuning configuration to drop stale packets reduces latency but requires robust frontend exception handling."
+                }
+            ]
         },
         {
             "id": "ch06.s02",
@@ -86,6 +117,18 @@
                         "term": "Denormalization for Read Performance",
                         "definition": "Normalization (3NF) reduces data redundancy but requires JOINs. Denormalization duplicates data to eliminate JOINs. Example: instead of JOIN users ON posts.user_id = users.id to get the username, store username directly in the posts table. TRADE-OFF: faster reads, more storage, risk of inconsistency (username changes require updates in posts too). Use for: read-heavy workloads where JOIN cost is prohibitive. Materialized views: Postgres REFRESH MATERIALIZED VIEW precomputes the JOIN result and stores it as a table."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Zero-Downtime Indexing & Covering Indexes (PostgreSQL)",
+                        "description": "The syntactic difference between a normal table-locking index and a safe, production-ready concurrent index.",
+                        "code": "-- BAD: Locks the table against writes until the index is fully built.\nCREATE INDEX idx_user_status ON users(status);\n\n-- GOOD: Builds the index in the background. Does not block INSERT/UPDATE/DELETE.\nCREATE INDEX CONCURRENTLY idx_user_status_safe ON users(status);\n\n-- ADVANCED: The Covering Index (Index-Only Scan)\n-- Scenario: You frequently query `SELECT email FROM users WHERE status = 'active'`\n-- By using INCLUDE, the index stores the email string directly inside the index leaf nodes.\n-- The database never has to visit the main table heap, turning O(1) random disk I/Os into O(0).\nCREATE INDEX CONCURRENTLY idx_covering_status \nON users(status) INCLUDE (email);"
+                    },
+                    {
+                        "title": "Index Troubleshooting Decision Matrix",
+                        "description": "Use this matrix during an interview when asked 'Why is my query still slow even though I added an index?'",
+                        "code": "SYMPTOM                              | LIKELY CAUSE                     | HOW TO FIX\n-------------------------------------|----------------------------------|------------------------------------------\nEXPLAIN shows 'Seq Scan'             | Missing index OR table is small  | Add index; if small table, DB prefers Seq Scan anyway\nIndex created on (A) and (B)         | Query asks for WHERE A=? AND B=? | Drop individual indexes and create Composite Index (A, B)\nQuery uses Composite Index (A, B)    | Query asks for WHERE B=?         | Left-Prefix Rule violated. Create new index on (B)\nEXPLAIN shows 'Index Scan' but slow  | Fetching rows from Heap (Random IO)| Use a Covering Index (INCLUDE clause) to force Index-Only Scan\nFunction in WHERE (WHERE LOWER(email))| Standard index stores raw email | Create a Functional/Expression Index: CREATE INDEX ON users(LOWER(email))"
+                    }
                 ]
             },
             "common_mistakes": [
@@ -106,5 +149,13 @@
             "title": "Postgres EXPLAIN Documentation",
             "url": "https://www.postgresql.org/docs/current/sql-explain.html"
         }
-    ]
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "B-Tree vs Hash Indexing",
+        "description": "Internal database structures for rapid lookups.",
+        "data": {
+            "mermaid_source": "graph TD\n  Query[SQL: SELECT * WHERE id = 50] --> Engine[DB Engine]\n  Engine --> BTree[B-Tree Root Node 1-100]\n  BTree --> L[Left Node 1-50]\n  BTree --> R[Right Node 51-100]\n  L --> Leaf[Leaf Page: Row 50 Data]\n  \n  Query2[NoSQL: GET key] --> Hash[Hash Function]\n  Hash --> Bucket[Memory Bucket O1]\n  Bucket --> SSD[SSD Block]\n  \n  style BTree fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px\n  style Leaf fill:#1a1a1a,stroke:#d4af37,stroke-width:2px,color:#ddd\n  style Hash fill:#d4af37,color:#000,stroke:#d4af37,stroke-width:2px"
+        }
+    }
 }

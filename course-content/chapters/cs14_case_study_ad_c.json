@@ -1,0 +1,110 @@
+{
+    "id": "cs14",
+    "title": "Case Study: Ad Click Aggregator",
+    "parent_id": null,
+    "order": 31,
+    "tags": [
+        "case-study",
+        "system-design",
+        "kafka",
+        "flink",
+        "streaming",
+        "analytics"
+    ],
+    "summary": "Design a globally distributed advertising click aggregator tracking billions of events per day, guaranteeing 'exactly-once' processing semantics for accurate financial billing.",
+    "explanation": {
+        "overview": "Advertising systems (like Google Ads or Facebook Ads) generate revenue based on clicks. If a system double-counts a click, the advertiser is wrongfully billed. If it misses a click, the platform loses money. The system must ingest 100,000 clicks per second, deduplicate spam/retries, aggregate the totals by campaign in real-time within 1-minute tumbling windows, and flush to a database without losing a single cent during a sudden datacenter crash.",
+        "how_it_works_internally": "INTERNAL Mechanics: The system relies on the 'Lambda Architecture' or pure 'Streaming Architecture' utilizing Apache Kafka and Apache Flink. When a user clicks an ad, a lightweight stateless API Gateway drops the `{click_id, ad_id, timestamp}` into a Kafka Topic. Kafka acts as an indestructible append-only buffer. A cluster of Flink Stream Processors consumes this topic. Flink uses a massive in-memory State Store to track `click_ids` to deduplicate retries. It groups the clicks into 1-minute 'Tumbling Windows' grouped by `ad_id`. After the minute passes, Flink writes the aggregated sum (`ad_id: 50 -> 504 clicks`) to a fast NoSQL database like Cassandra or ClickHouse for the advertiser dashboard to query.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "Ingestion & Buffering",
+                "detail": "Client clicks Ad. API Gateway immediately pushes the event to Kafka and returns HTTP 200 OK to the client. The synchronous work is over."
+            },
+            {
+                "step": 2,
+                "title": "Deduplication (Exactly-Once)",
+                "detail": "Flink consumes the Kafka message. It checks a Bloom Filter or memory state: 'Have I seen this `click_id` in the last 10 minutes?'. If yes, drop it to prevent double-billing."
+            },
+            {
+                "step": 3,
+                "title": "Windowed Aggregation",
+                "detail": "Flink holds the allowed clicks in memory, bucketed by minute (09:00 to 09:01). It simply increments the counter for the respective `campaign_id`."
+            },
+            {
+                "step": 4,
+                "title": "Database Flush",
+                "detail": "When the 09:01 watermark passes, Flink executes an Upsert (Update or Insert) into Cassandra `UPDATE campaign_stats SET clicks = clicks + 50 WHERE campaign_id = 123`."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Exactly-Once Semantics",
+                "definition": "INTERNAL: The holy grail of distributed stream processing. Even if a Flink worker crashes mid-calculation and restarts, the system mathematically guarantees that every original Kafka message affects the final database state exactly one time, never zero, never twice. Managed via Two-Phase Commits distributed across Kafka and the DB."
+            },
+            {
+                "term": "Tumbling vs Sliding Windows",
+                "definition": "Tumbling Windows: Fixed, non-overlapping chunks of time (e.g., 1:00 to 1:05, 1:05 to 1:10). Sliding Windows: Overlapping chunks (e.g., last 5 minutes, updated every 1 minute). Ad aggregators primarily use Tumbling windows for clean billing increments."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: Kafka Producer Ingestion",
+                "description": "Concrete Python snippet demonstrating high-throughput async Kafka production.",
+                "code": "from kafka import KafkaProducer\nimport json\n\n# Configure producer with strong acks for financial data\nproducer = KafkaProducer(\n    bootstrap_servers=['kafka1:9092'],\n    value_serializer=lambda v: json.dumps(v).encode('utf-8'),\n    acks='all',  # Wait for leader & replicas to confirm receipt\n    retries=5\n)\n\ndef track_click(click_id, ad_id, user_id):\n    event = {'click_id': click_id, 'ad_id': ad_id, 'user_id': user_id}\n    # Asynchronous send to avoid blocking the API gateway\n    future = producer.send('ad-clicks-topic', key=str(ad_id).encode(), value=event)\n    # Callbacks handle failures\n    future.add_errback(alert_on_failure)"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Production Java Flink Windowing snippet.",
+                "code": "public class AdClickAggregator {\n    public static void main(String[] args) {\n        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();\n        \n        DataStream<AdClickEvent> stream = env.addSource(new FlinkKafkaConsumer<>(\"clicks\", ...));\n        \n        stream\n            .keyBy(AdClickEvent::getCampaignId)\n            // 1-minute tumbling window based on event timestamps\n            .window(TumblingEventTimeWindows.of(Time.minutes(1)))\n            .aggregate(new ClickCountAggregator())\n            .addSink(new CassandraSink());\n            \n        env.execute(\"Ad Click Aggregation Job\");\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: Storage Databases",
+                "description": "Evaluating where to store the final aggregated metrics.",
+                "code": "OPTION Cassandra vs OPTION ClickHouse/Druid\n-------------------------------------------\nPros Cassandra: Perfect for extremely high write-throughput (Updates/Upserts). Linearly scalable.\nCons Cassandra: Fails at complex analytical GROUP BY queries (e.g., 'Show me clicks by age demographic across all campaigns').\nPros ClickHouse/Druid: Columnar OLAP databases designed specifically for sub-second analytical dashboard queries.\nCons ClickHouse/Druid: More complex to administrate, less forgiving with continuous microscopic row updates."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Handling delayed messages and bot storms.",
+                "code": "try-catch fallback mechanics:\n1. LateDataException: A user clicks an ad on a subway train, loses perfectly internet, and the phone sends the click 3 hours later. The 09:00 Flink window has already closed and flushed to the database. Mitigated by configuring 'Allowed Lateness' in Flink. The window is kept alive in memory for a grace period, and emits late-update corrections to Cassandra if a delayed packet arrives.\n2. Malicious Bot Net: 10 million clicks originate from an AWS server farm in 1 second testing vulnerabilities. Flink detects the IP rate-limit violation mid-stream, routes the click IDs to a Dead Letter Queue (DLQ) for auditing, and strips them from the aggregation pipeline before they hit the billing database."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (Kafka Partitions)",
+            "default": "num.partitions = 1",
+            "effect": "Modify parameter `num.partitions = 200` on the Ad Clicks topic.",
+            "tradeoff": "A single Kafka partition is bound to a single physical disk and a single Flink worker thread, capping throughput. Increasing partitions to 200 allows 200 Flink workers to process the stream perfectly in parallel, maximizing CPU utilization across the cluster."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Recovering Flink state after a hardware explosion.",
+            "how": "Use Distributed Checkpointing. Every 10 seconds, Flink pauses the stream for an instant and saves the exact memory state of its internal variables (including current window counts and processed Kafka Offsets) directly to cold Amazon S3. If the server explodes, a new server boots, downloads the S3 checkpoint, winds Kafka exactly back to the saved offset, and resumes identically."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Ad Click Streaming Workflow",
+        "description": "Decoupling API Gateways from stateful stream processors.",
+        "data": {
+            "mermaid_source": "graph TD\n  Client --> |Click Ad| API[API Gateway]\n  API --> |Append Event| Kafka[(Kafka 'clicks' Topic)]\n  Kafka --> Flink1[Flink Stream Processor]\n  Kafka --> Flink2[Flink Stream Processor]\n  \n  Flink1 <--> State[(RocksDB Local State)]\n  Flink2 <--> State\n  \n  Flink1 --> |Window 1-Min Flush| DB[(Cassandra/ClickHouse)]\n  Flink2 --> |Window 1-Min Flush| DB\n  \n  DB --> Dashboard[Advertiser Analytics UI]"
+        }
+    },
+    "limitations": [
+        "Consumer Group Lag: If traffic spikes 10x, and Flink processors can't keep up, Kafka buffers the delay. The Dashboard stops showing real-time data and shows 5-minute delayed data. TWEAK: Set up auto-scaling on the Flink consumer group based on the 'Kafka Consumer Lag' JMX metric.",
+        "Deduplication Memory limits: Keeping 1 billion distinct Click IDs in RAM to check for duplicates is impossible. TWEAK: Flink uses RocksDB (a local on-disk embedded database) to spill the deduplication set seamlessly to NVMe SSDs, trading slight latency for infinite state size."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Apache Flink",
+            "details": "The industry standard for stateful stream processing. Unlike Apache Spark (which uses micro-batches), Flink processes data event-by-event natively, providing true low-latency streaming and profound fault-tolerance mechanisms."
+        },
+        {
+            "technology": "ClickHouse",
+            "details": "An immensely fast open-source column-oriented database management system. It allows generating analytical data reports in real-time, often used as the final sink for the ad dashboards."
+        }
+    ]
+}

@@ -1,0 +1,103 @@
+{
+    "id": "cs03",
+    "title": "Case Study: Twitter / News Feed Design",
+    "parent_id": null,
+    "order": 20,
+    "tags": [
+        "case-study",
+        "social-network",
+        "fan-out",
+        "caching"
+    ],
+    "summary": "Design a highly available news feed supporting hundreds of millions of users, focusing on the hybrid fan-out on write vs fan-out on read architectures.",
+    "explanation": {
+        "overview": "A News Feed system collects status updates from people you follow and displays them in reverse chronological order. It is an extremely read-heavy system (often 100:1 read-to-write ratio). The core problem is the 'Celebrity Fan-out' issue: when an average user tweets, we can easily push it to their 50 followers. But when a celebrity heavily followed by 100 million people tweets, pushing it to all followers would completely melt the database.",
+        "how_it_works_internally": "INTERNAL Mechanics: We use a Hybrid Fan-Out Architecture. Average Users use 'Fan-out on Write' (Push Model). When user A posts, a background worker instantly copies the tweet ID into the pre-computed redis cache timelines of all followers. Reads are O(1). Celebrities use 'Fan-out on Read' (Pull Model). When Justin Bieber tweets, we DO NOT push it. Instead, when a follower opens their app, the system checks the celebrity's recent tweets and merges it into the user's timeline on-the-fly.",
+        "step_by_step": [
+            {
+                "step": 1,
+                "title": "API Design",
+                "detail": "POST /v1/tweet (body: content, media_ids). GET /v1/feed (query: cursor). We exclusively use cursor-based pagination so that new tweets arriving do not shift the offset window and cause users to see duplicate tweets."
+            },
+            {
+                "step": 2,
+                "title": "Data Modeling",
+                "detail": "Tweet Table: ID, UserID, Content, CreatedAt. User Relation Table: FollowerID, FolloweeID. Timeline Cache (Redis): Key=UserID, Value=List<TweetID>."
+            },
+            {
+                "step": 3,
+                "title": "Handling the Celebrity Problem",
+                "detail": "A user is marked as a 'celebrity' when they cross 100,000 followers. The graph database triggers a bit flip. The Fan-out service now ignores them. The Read API is modified to always query the cached list of 'celebrities I follow' and merge their recent tweets via a K-Way Merge algorithm."
+            }
+        ],
+        "key_concepts": [
+            {
+                "term": "Fan-out on Write (Push)",
+                "definition": "INTERNAL: Pre-computing the feed during write time. Pros: Feed loading is instant. Cons: Massive write amplification. A single tweet by someone with 1M followers generates 1M database rows or cache updates."
+            },
+            {
+                "term": "Fan-out on Read (Pull)",
+                "definition": "INTERNAL: Computing the feed during read time (when the user requests it). Pros: Minimal storage, saves resources for inactive accounts. Cons: Feed generation is slow (high latency), vulnerable to thundering herds."
+            }
+        ],
+        "examples": [
+            {
+                "title": "Python Implementation Snippet: K-Way Feed Merge",
+                "description": "Concrete Python code using heaps to merge pre-computed feeds with celebrity pull feeds in O(N log K) time.",
+                "code": "import heapq\n\ndef merge_feeds(my_cached_feed, celebrity_feeds):\n    # my_cached_feed is a list of [timestamp, tweet_id]\n    # celebrity_feeds is a list of lists of [timestamp, tweet_id]\n    min_heap = []\n    # Negate timestamp to simulate Max Heap in Python (newest first)\n    for feed in [my_cached_feed] + celebrity_feeds:\n        if feed:\n            heapq.heappush(min_heap, (-feed[0][0], feed[0][1], feed, 0))\n            \n    merged_timeline = []\n    while min_heap and len(merged_timeline) < 20:\n        neg_ts, tweet_id, feed_list, idx = heapq.heappop(min_heap)\n        merged_timeline.append(tweet_id)\n        if idx + 1 < len(feed_list):\n            next_item = feed_list[idx + 1]\n            heapq.heappush(min_heap, (-next_item[0], next_item[1], feed_list, idx + 1))\n    return merged_timeline"
+            },
+            {
+                "title": "Java Implementation Snippet & Concurrency",
+                "description": "Production Java snippet demonstrating asynchronous Fan-out Worker logic.",
+                "code": "public class FanoutWorker {\n    public static void processTweetEvent(TweetEvent event, List<String> followers) {\n        // Submitting to thread pool to fan out asynchronously without blocking the API\n        CompletableFuture.runAsync(() -> {\n            try {\n                redisCluster.pipeline(pipeline -> {\n                    for (String followerId : followers) {\n                        pipeline.lpush(\"feed:\" + followerId, event.getTweetId());\n                        pipeline.ltrim(\"feed:\" + followerId, 0, 999); // Cap feed size\n                    }\n                });\n            } catch (Exception e) {\n                // Handle partial failures via dead letter queue\n            }\n        });\n    }\n}"
+            },
+            {
+                "title": "Decision Matrix & Tradeoffs: WebSockets vs Long Polling",
+                "description": "Evaluating how to deliver new tweets live to the frontend.",
+                "code": "OPTION WebSockets vs OPTION Server-Sent Events (SSE)\n----------------------------------------------------\nPros WebSockets: Full duplex communication, real-time.\nCons WebSockets: Heavy, requires persistent stateful connections, hard over L7 Load Balancers.\nPros SSE: Native HTTP, easier to load balance, automatic reconnection.\nCons SSE: Unidirectional (server to client only). (SSE is preferred for feeds since clients just read)."
+            },
+            {
+                "title": "Failure Modes & Exception Handling",
+                "description": "Thundering Herds and Cache Stampedes.",
+                "code": "try-catch fallback mechanics:\n1. RedisConnectionFailureException: If the timeline cache dies, users fallback to pulling from the RDBMS, which induces a Thundering Herd. Therefore, we implement robust rate limiting on the fallback path and use a Singleflight request pattern to collapse identical DB queries."
+            }
+        ]
+    },
+    "configurable_params": [
+        {
+            "name": "Library Configuration Parameters (Kafka Producer)",
+            "default": "acks=1",
+            "effect": "Modify parameter `acks=all` for financial transactions, but for Twitter feed generation, `acks=1` (leader only) or `acks=0` is preferred for maximum throughput.",
+            "tradeoff": "Losing a few feed update events is acceptable in a social network compared to the latency penalty of strict consistency."
+        }
+    ],
+    "advanced_tweaks": [
+        {
+            "technique": "State Management Techniques",
+            "when_to_use": "Scaling WebSocket connections for real-time live events (Superbowl).",
+            "how": "Stateful WebSocket servers maintain user connection state. Instead of saving IP state to a DB, use a Pub/Sub backbone (Redis Pub/Sub). When a tweet arrives, publish it to a Redis channel. The specific Stateful Server subscribed to that user pushes the update instantly."
+        }
+    ],
+    "diagram": {
+        "type": "mermaid",
+        "title": "Twitter Hybrid Fan-Out Architecture",
+        "description": "Separation of Push (Normal Users) and Pull (Celebrities).",
+        "data": {
+            "mermaid_source": "graph TD\n  Client[Mobile Client] --> API[API Gateway]\n  API --> |POST Tweet| WriteSvc[Tweet Write Service]\n  WriteSvc --> DB[(Primary Postgres)]\n  WriteSvc --> Kafka[Kafka Event Stream]\n  Kafka --> Fanout[Fan-out Workers]\n  Fanout --> GraphDB[(Graph DB: Check Followers)]\n  Fanout --> |If Followers < 100k| PushRedis[(User Timeline Redis - PUSH)]\n  \n  API --> |GET Feed| ReadSvc[Feed Aggregator Service]\n  ReadSvc --> PushRedis\n  ReadSvc --> GraphDB2[(Graph DB: Get My Celebrities)]\n  ReadSvc --> PullRedis[(Celebrity Timeline Redis - PULL)]\n  PushRedis -.-> Merge[K-Way Merge Alg]\n  PullRedis -.-> Merge\n  Merge --> Client"
+        }
+    },
+    "limitations": [
+        "Inactive Users: Fanning out to dead accounts wastes immense Redis RAM. TWEAK: Only fan-out to Users active in the last 14 days. If an inactive user logs in, synchronously generate their feed.",
+        "Timeline Truncation: Storing infinite timelines in memory crashes Redis. TWEAK: Set a strict LTRIM of 500-1000 items per user length. Older tweets require fetching from Cold Storage (Cassandra)."
+    ],
+    "technologies_used": [
+        {
+            "technology": "Redis",
+            "details": "Acts as the literal timeline. `LPUSH` appends new tweets. `LRANGE 0 20` fetches the first page of the timeline. O(1) performance."
+        },
+        {
+            "technology": "Cassandra",
+            "details": "Used as the permanent cold storage for actual tweet content. Scalable infinitely by hashing the TweetID, distributing PBs of text/images seamlessly without manual sharding."
+        }
+    ]
+}
