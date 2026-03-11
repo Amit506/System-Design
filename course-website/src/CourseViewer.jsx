@@ -63,7 +63,7 @@ export default function CourseViewer({ activeDoc }) {
 
                     {diagram && diagram.type === 'mermaid' && (
                         <div className="diagram-section my-12">
-                            <h3 className="section-title flex items-center gap-2"><Layers size={20} className="text-gold" /> Architecture Diagram</h3>
+                            <h3 className="section-title flex items-center gap-2"><Layers size={20} className="text-gold" /> {diagram.title || 'Architecture Diagram'}</h3>
                             {diagram.description && <p className="text-muted mb-4">{diagram.description}</p>}
                             <div className="diagram-wrapper glass-panel p-2 rounded-xl border-subtle relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-2"><span className="text-xs font-mono text-muted bg-dark rounded px-2">MERMAID (LIVE)</span></div>
@@ -229,8 +229,17 @@ export default function CourseViewer({ activeDoc }) {
                             <ul className="premium-list success-list space-y-3">
                                 {interview_tips.map((item, i) => (
                                     <li key={i} className="flex font-medium items-start p-3 bg-dark/40 rounded-lg">
-                                        <CheckCircle size={16} className="text-green-400 mr-3 flex-shrink-0 mt-0.5" />
-                                        <span>{item}</span>
+                                        <div className="flex items-start w-full">
+                                            <CheckCircle size={16} className="text-green-400 mr-3 flex-shrink-0 mt-0.5" />
+                                            {typeof item === 'string' ? (
+                                                <span>{item}</span>
+                                            ) : (
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-light mb-1">{item.q}</span>
+                                                    <span className="text-muted text-sm font-normal">{item.a}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
