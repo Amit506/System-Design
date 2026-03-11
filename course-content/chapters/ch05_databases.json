@@ -19,6 +19,16 @@
         "overview": "The database is the most critical component in system design — it persists your data and its characteristics (consistency, throughput, query model) constrain your entire architecture. Every system design interview involves choosing a database, and the best candidates explain WHY based on access patterns, consistency needs, and scale.",
         "how_it_works_internally": "Databases solve two problems: (1) store data durably (survive restarts and crashes), and (2) retrieve data efficiently (answer queries fast). These goals are in tension — storing data optimally for writes (sequential append) differs from optimal read storage (sorted, indexed). The two main storage engine families (B-Tree and LSM-Tree) represent different trade-off points."
     },
+    "limitations": [
+        "SQL Scalability Walls: Relational queries (JOINs) require data to live on the same physical server. Once you exceed the largest vertical instance (e.g., 24TB RAM), horizontal sharding becomes mandatory, destroying cross-shard ACID guarantees and heavily complicating application logic.",
+        "NoSQL Consistency Risks: Building financial ledgers on eventually consistent databases (BASE properties) risks race conditions, duplicate spend, and phantom reads. You push consistency logic into the microservice layer, which is error-prone.",
+        "Connection Pool Exhaustion: Each database connection consumes memory (5-10MB in Postgres). Thousands of microservices making direct connections can quickly OOM the database server. A dedicated proxy (PgBouncer, ProxySQL) is essentially required at scale."
+    ],
+    "common_mistakes": [
+        "Setting the connection pool maximum size too high. Common belief: 'more connections = more throughput.' Reality: context switching kills the CPU. The optimal pool size is roughly `((core_count * 2) + effective_spindle_count)`.",
+        "Leaking connections by opening a connection, executing a transaction, hitting an unhandled exception, and failing to return the connection to the pool.",
+        "Defaulting to a NoSQL database 'just in case we need to scale' without realizing the heavy cost of lost relational integrity and JOINs."
+    ],
     "children": [
         {
             "id": "ch05.s01",
@@ -48,6 +58,13 @@
                     {
                         "term": "PostgreSQL Specifics",
                         "definition": "MVCC implementation: every row has xmin (creating transaction ID) and xmax (deleting transaction ID). A transaction sees a row if xmin < its_snapshot AND (xmax is null OR xmax > its_snapshot). UPDATE creates a new row version (new xmin) and marks old version (xmax = current_txid). VACUUM reclaims dead rows. TOAST: large values (>2 KB) are compressed and stored in a separate TOAST table. The main table stores a pointer. This keeps main table rows small for fast sequential scans. Connection model: one OS process per client connection (unlike MySQL's thread-per-connection). Overhead: ~10 MB per connection. For 10,000 connections: 100 GB just for connection overhead. FIX: use PgBouncer (connection pooler) — 10,000 client connections mapped to 100 database connections."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Connection Pooling (Java HikariCP vs Python SQLAlchemy)",
+                        "description": "Developer blogs stress that optimizing connection pools is critical to application stability. HikariCP is the gold standard in Java; SQLAlchemy provides built-in queuing in Python. The key config is setting a hard `maximumPoolSize` to prevent overwhelming the DB.",
+                        "code": "// --- Java: HikariCP (Spring Boot Default) ---\nHikariConfig config = new HikariConfig();\nconfig.setJdbcUrl(\"jdbc:postgresql://db:5432/mydb\");\nconfig.setUsername(\"user\");\nconfig.setPassword(\"pass\");\n// CRITICAL: Pool size should be surprisingly small! (core_count * 2) + disks\nconfig.setMaximumPoolSize(10);\n// Prevent stale connections being kept alive forever\nconfig.setMaxLifetime(1800000); // 30 mins\nHikariDataSource ds = new HikariDataSource(config);\n\n# --- Python: SQLAlchemy ---\nfrom sqlalchemy import create_engine\n# queue_pool is default. pool_size=10, max_overflow=5 means up to 15 connections max.\nengine = create_engine(\n    \"postgresql://user:pass@db:5432/mydb\",\n    pool_size=10,\n    max_overflow=5,\n    pool_timeout=30,\n    pool_pre_ping=True  # Pings the DB before checking out connection (prevents stale disconnects)\n)"
                     }
                 ]
             },

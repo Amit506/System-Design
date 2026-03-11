@@ -16,9 +16,19 @@
     ],
     "summary": "Complete networking guide — OSI/TCP-IP layers, DNS resolution, TCP vs UDP internals, HTTP evolution, REST vs gRPC vs GraphQL, WebSockets, and protocol selection for system design.",
     "explanation": {
-        "overview": "Every system design involves components communicating over a network. Understanding protocols — their strengths, weaknesses, and internals — lets you make informed choices about how services talk to each other. This chapter covers everything from low-level TCP to high-level API paradigms.",
+        "overview": "Every system design involves components communicating over a network. Understanding protocols — their strengths, weaknesses, and internals — lets you make informed choices about how services talk to each other. This chapter covers everything from low-level TCP to high-level API paradigms. DEVELOPER BLOG INSIGHT: 'There is no perfect protocol; every choice is a trade-off between latency, throughput, complexity, and payload size.'",
         "how_it_works_internally": "Network communication follows a layered model. Each layer adds its own header and handles a specific concern: physical transmission (L1-L2), addressing and routing (L3 IP), reliable delivery (L4 TCP/UDP), and application semantics (L7 HTTP/gRPC). When you type a URL, your request traverses all these layers down on the client, crosses the network, and traverses up on the server."
     },
+    "limitations": [
+        "gRPC Debugging: Because Protobuf is binary, you cannot just use `curl` or browser dev tools easily to inspect payloads. You need specific tooling like `grpcurl` or BloomRPC.",
+        "WebSocket Scaling: Unlike stateless REST requests, WebSockets hold an open file descriptor on the server. To scale 1M concurrent users, you need dedicated connection handling servers and a Pub/Sub backplane (like Redis or Kafka) to route messages across instances.",
+        "HTTP/3 (QUIC) Adoption: While excellent for mobile networks (handles packet loss better than TCP), many enterprise firewalls heavily throttle or block UDP traffic, forcing fallbacks to HTTP/2."
+    ],
+    "common_mistakes": [
+        "Choosing gRPC for a public-facing API without realizing browsers need a translation proxy (gRPC-Web).",
+        "Overusing WebSockets for simple request-response flows where long-polling or Server-Sent Events (SSE) would be drastically simpler.",
+        "Ignoring TLS handshake overhead in low-latency internal microservices (often internal microservices use plain HTTP/2 or mutual TLS depending on zero-trust policies)."
+    ],
     "children": [
         {
             "id": "ch03.s01",
@@ -144,6 +154,18 @@
                     {
                         "term": "Server-Sent Events (SSE)",
                         "definition": "Unidirectional server → client push over HTTP. Client opens a long-lived HTTP connection (Content-Type: text/event-stream), and the server sends events as they occur. Unlike WebSocket, SSE is HTTP-based — works with existing infrastructure (proxies, CDN, auth). SIMPLER than WebSocket but one-way only. Client can't send through the SSE connection (uses regular HTTP for sending). Auto-reconnect built into the browser API (EventSource). USE WHEN: live notifications, feed updates, stock tickers — any scenario where only the server pushes data."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "gRPC Implementation: Java vs Python",
+                        "description": "gRPC requires defining the contract first in a `.proto` file, then generating the code. Compare how Java strongly types the implementation versus Python's dynamic approach.",
+                        "code": "// --- Example .proto file ---\n// service Greeter { rpc SayHello (HelloRequest) returns (HelloReply) {} }\n\n// --- Java (Spring Boot gRPC) ---\n@GrpcService\npublic class GreeterServiceImpl extends GreeterGrpc.GreeterImplBase {\n    @Override\n    public void sayHello(HelloRequest req, StreamObserver<HelloReply> responseObserver) {\n        HelloReply reply = HelloReply.newBuilder().setMessage(\"Hello \" + req.getName()).build();\n        responseObserver.onNext(reply);\n        responseObserver.onCompleted();\n    }\n}\n\n// --- Python (grpcio) ---\nclass Greeter(helloworld_pb2_grpc.GreeterServicer):\n    def SayHello(self, request, context):\n        return helloworld_pb2.HelloReply(message='Hello, %s!' % request.name)\n\ndef serve():\n    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))\n    helloworld_pb2_grpc.add_GreeterServicer_to_server(Greeter(), server)\n    server.add_insecure_port('[::]:50051')\n    server.start()\n    server.wait_for_termination()"
+                    },
+                    {
+                        "title": "WebSocket Scaling Backplane (Python / FastAPI)",
+                        "description": "When placing FastAPI WebSockets behind a load balancer, you must use a backplane like Redis Pub/Sub to broadcast messages across all active pods/workers.",
+                        "code": "# Python FastAPI with Redis Pub/Sub Broadcasting\n@app.websocket(\"/ws/{client_id}\")\nasync def websocket_endpoint(websocket: WebSocket, client_id: str):\n    await websocket.accept()\n    pubsub = redis.pubsub()\n    await pubsub.subscribe(\"global_chat\")\n    \n    async def reader(ws: WebSocket):\n        async for message in pubsub.listen():\n            if message[\"type\"] == \"message\":\n                await ws.send_text(message[\"data\"])\n                \n    # Run reader task concurrently\n    asyncio.create_task(reader(websocket))\n    \n    try:\n        while True:\n            data = await websocket.receive_text()\n            # Broadcast to all pods via Redis\n            await redis.publish(\"global_chat\", f\"{client_id}: {data}\")\n    except WebSocketDisconnect:\n        await pubsub.unsubscribe(\"global_chat\")"
                     }
                 ]
             },

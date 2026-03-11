@@ -12,9 +12,19 @@
     ],
     "summary": "The fundamental properties that define distributed systems — scalability, availability, reliability, consistency, and the trade-offs between them.",
     "explanation": {
-        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties.",
+        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties. DEVELOPER BLOG INSIGHT: 'Jumping from monolithic to distributed systems is like jumping from an acoustic guitar to a full symphony orchestra in a hurricane.'",
         "how_it_works_internally": "Distributed systems face challenges that monolithic systems don't: network is unreliable (packets drop, latency spikes), clocks are unsynchronized (each machine has slightly different time), nodes fail independently (one server crashes while others continue), and there's no shared memory (data must be explicitly communicated). These realities force you to make design trade-offs at every layer."
     },
+    "limitations": [
+        "Network Unreliability: The Fallacies of Distributed Computing state the network is never 100% reliable. You must code for latency spikes, partitions, and dropped packets.",
+        "Increased Observability Overhead: When a request traverses 15 microservices, finding which one failed requires distributed tracing (Jaeger, Zipkin) and centralized logging (ELK).",
+        "Data Consistency: Unlike a monolithic SQL database, enforcing ACID guarantees across multiple geographic regions is mathematically impossible without sacrificing availability (CAP Theorem)."
+    ],
+    "common_mistakes": [
+        "Assuming zero latency between internal microservices.",
+        "Failing to implement Circuit Breakers (like Resilience4j or PyBreaker) when talking to downstream dependencies.",
+        "Using distributed systems when a monolithic Postgres instance and a simple state API would suffice (YAGNI)."
+    ],
     "children": [
         {
             "id": "ch02.s01",
@@ -118,6 +128,13 @@
                         "term": "Graceful Degradation",
                         "definition": "When a component fails, the system continues with reduced functionality rather than total failure. EXAMPLE: if the recommendation engine is down, Amazon still shows the product page — just without 'Customers also bought'. If the cache is down, the system falls back to database (slower but functional). If a non-critical microservice is down, the API returns partial data with a flag indicating degraded mode. IMPLEMENTATION: circuit breakers (see ch13), fallback methods, feature flags to disable failing features."
                     }
+                ],
+                "examples": [
+                    {
+                        "title": "Circuit Breakers in Java & Python",
+                        "description": "To prevent cascading failures, top engineering blogs recommend the Circuit Breaker pattern. It stops requests to a failing service immediately, giving it time to recover rather than overwhelming it.",
+                        "code": "// --- Java: Resilience4j (Industry Standard) ---\n// Configure the breaker to open if 50% of the last 100 requests fail\nCircuitBreakerConfig config = CircuitBreakerConfig.custom()\n    .failureRateThreshold(50)\n    .slidingWindowSize(100)\n    .waitDurationInOpenState(Duration.ofMillis(1000))\n    .build();\nCircuitBreaker breaker = CircuitBreaker.of(\"paymentService\", config);\n\n// Decorate the risky network call\nSupplier<String> decoratedSupplier = CircuitBreaker\n    .decorateSupplier(breaker, backendService::doSomething);\n\n// --- Python: Tenacity & PyBreaker ---\n# Python uses decorators heavily for this. Tenacity handles intelligent retries with exponential backoff.\n@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(5))\ndef make_flaky_request():\n    return requests.get(\"http://flaky-service/api\").json()\n\n# PyBreaker is pure circuit breaking\n@circuit(failure_threshold=5, recovery_timeout=60)\ndef call_database():\n    return db.query(\"SELECT * FROM users\")"
+                    }
                 ]
             },
             "children": []
@@ -164,6 +181,20 @@
                     "target_id": "ch09",
                     "title": "CAP Theorem & Consensus",
                     "relationship": "deep-dive"
+                }
+            ],
+            "advanced_tweaks": [
+                {
+                    "technique": "Quorum Reads/Writes (Dynamo Topology)",
+                    "when_to_use": "When you need tunable consistency. Read/Write nodes (R/W) must overlap: W + R > N (Total Replicas).",
+                    "how": "If N=3, W=2, R=2 ensures strong consistency because every Read checks at least 2 nodes, guaranteeing it sees the latest write (which hit at least 2 nodes)."
+                }
+            ],
+            "examples": [
+                {
+                    "title": "Consensus Implementations in The Wild",
+                    "description": "When building distributed locks or leader election, don't write your own Consensus algorithm. Developer blogs scream: 'Use existing libraries!'",
+                    "code": "- Java: MicroRaft (feature-complete, stable implementation of Raft) or Apache Ratis.\n- Python: rraft-py (Python bindings for the hyper-fast Rust tikv/raft-rs crate) or PyRaftLog for pure Python implementations.\n- Go: Hashicorp Raft (used in Consul and Nomad, extremely production hardened)."
                 }
             ],
             "children": []

@@ -13,9 +13,19 @@
     ],
     "summary": "How load balancers distribute traffic, proxy types (forward/reverse), CDN architecture, and LB algorithms with internals.",
     "explanation": {
-        "overview": "Load balancers distribute incoming traffic across multiple servers to ensure no single server becomes a bottleneck. They are the gateway to horizontal scaling — without a load balancer, you can't have multiple application servers. They also provide health checking, SSL termination, and failure isolation.",
+        "overview": "Load balancers distribute incoming traffic across multiple servers to ensure no single server becomes a bottleneck. They are the gateway to horizontal scaling — without a load balancer, you can't have multiple application servers. They also provide health checking, SSL termination, and failure isolation. DEVELOPER BLOG INSIGHT: 'Load balancers are the invisible traffic cops of the internet, but misconfigure them and they become your biggest single point of failure.'",
         "how_it_works_internally": "A load balancer sits between clients and servers. The client connects to the LB's virtual IP (VIP). The LB selects a backend server using a configured algorithm, forwards the request, receives the response, and returns it to the client. The client never knows which backend server handled its request. Modern LBs operate at two layers: L4 (transport — routes based on IP/port, fast, no request inspection) and L7 (application — routes based on HTTP headers, URL path, cookies, slower but smarter)."
     },
+    "limitations": [
+        "Single Point of Failure (SPOF): If your load balancer dies, your cluster of 1,000 backend servers becomes unreachable. LBs must be deployed in Active-Passive pairs with heartbeat mechanisms (like Keepalived/VRRP) to failover virtual IPs.",
+        "Sticky Sessions vs Scaling: Relying on session state (sticky sessions) forces a user to always hit the same backend server. If that server receives heavy users, it becomes overloaded while others sit idle. (Fix: Store session state in Redis instead).",
+        "Cost and Latency: Hardware LBs are incredibly expensive. Adding any LB adds a network hop, slightly increasing latency."
+    ],
+    "common_mistakes": [
+        "Configuring a timeout on the load balancer that is shorter than the application's maximum request timeout (causes premature 504 Gateway Timeouts).",
+        "Blindly using Round-Robin when backend servers have drastically different hardware profiles (Result: cheap servers get overloaded, expensive servers sit idle).",
+        "Failing to implement 'Deep Health Checks'. A server might return 200 OK for a shallow /health check, but its database connection pool is exhausted."
+    ],
     "children": [
         {
             "id": "ch04.s01",
@@ -43,6 +53,17 @@
                     {
                         "term": "Global Server Load Balancer (GSLB)",
                         "definition": "Distributes traffic across multiple datacenters/regions. Typically DNS-based: health-checks all regions, returns IP of the healthiest/closest region. AWS Route 53 with latency-based routing, Cloudflare DNS load balancing. This is the first hop — then regional LBs distribute within each datacenter."
+                    },
+                    {
+                        "term": "Client-Side Load Balancing",
+                        "definition": "Instead of a centralized proxy (like Nginx), the client itself holds a list of backend servers and decides which one to call. This eliminates the extra network hop to a centralized LB and removes a SPOF. Found heavily in microservices (gRPC, Spring Cloud). The client polls a Service Registry (like Eureka or Consul) to get the live IPs."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Client-Side Load Balancing (Java Spring & gRPC Python)",
+                        "description": "Developer blogs heavily recommend Client-Side load balancing for internal microservice-to-microservice calls to avoid network hops. Spring uses `Spring Cloud LoadBalancer` (formerly Netflix Ribbon). gRPC uses built-in name resolvers.",
+                        "code": "// --- Java: Spring Cloud LoadBalancer ---\n@LoadBalanced // This single annotation injects a client-side LB interceptor\n@Bean\npublic RestTemplate restTemplate() {\n    return new RestTemplate();\n}\n// Usage: URL is the service name, not an IP. Client picks the real IP locally.\nrestTemplate.getForObject(\"http://ORDER-SERVICE/orders/1\", String.class);\n\n# --- Python: gRPC Client-Side Round Robin ---\n# gRPC natively supports client-side load balancing via DNS or custom resolvers\nimport grpc\n# Connect to a headless service (DNS returns multiple A records)\nchannel = grpc.insecure_channel(\n    'dns:///my-service:50051',\n    options=[('grpc.lb_policy_name', 'round_robin')] # Built-in LB policy\n)\nstub = helloworld_pb2_grpc.GreeterStub(channel)"
                     }
                 ]
             },

@@ -557,7 +557,7 @@
     },
     {
       "id": "ch01",
-      "title": "OOP & Low-Level Design Foundations",
+      "title": "OOP & Low-Level Design Masterclass",
       "parent_id": null,
       "order": 1,
       "tags": [
@@ -565,12 +565,13 @@
         "LLD",
         "SOLID",
         "design-patterns",
+        "DDD",
         "UML"
       ],
-      "summary": "Object-oriented programming fundamentals, SOLID principles, GoF design patterns with internals, UML diagrams, and a structured LLD interview framework.",
+      "summary": "Master object-oriented programming, SOLID principles, GoF design patterns, and Domain-Driven Design (DDD) tactical patterns with real-world code examples and use cases.",
       "explanation": {
-        "overview": "Low-Level Design (LLD) focuses on the internal structure of a single component — class hierarchies, design patterns, database schemas, and API contracts. While HLD asks 'what components do we need?', LLD asks 'how do we build each component?' LLD interviews test your ability to write clean, extensible, maintainable code that follows established principles.",
-        "how_it_works_internally": "In an LLD interview (45-60 min), you're asked to design a specific component: parking lot, elevator system, chess game, LRU cache, or rate limiter. You must produce class diagrams, identify entities, define relationships, apply relevant design patterns, and often write working code. The evaluation focuses on extensibility (can new features be added without modifying existing code?), separation of concerns, and correct use of patterns."
+        "overview": "Low-Level Design (LLD) focuses on the internal structure of a single component — class hierarchies, design patterns, database schemas, and API contracts. While High-Level Design (HLD) asks 'what components do we need?', LLD asks 'how do we build each component?' LLD interviews test your ability to write clean, extensible, maintainable code that follows established industry principles.",
+        "how_it_works_internally": "In an LLD interview (45-60 min), you are typically asked to design a specific component: a parking lot, an elevator system, a chess game, an LRU cache, or a rate limiter. You must produce class diagrams, identify entities, define relationships, apply relevant design patterns, and write working code. The evaluation focuses on extensibility (can new features be added without modifying existing code?), separation of concerns, and correct use of modern patterns."
       },
       "children": [
         {
@@ -590,19 +591,26 @@
             "key_concepts": [
               {
                 "term": "Encapsulation",
-                "definition": "Bundle data (fields) and methods that operate on that data into a single unit (class), and restrict direct access to internal state. External code interacts through public methods (getters/setters), not by directly modifying fields. WHY: prevents invalid state. A BankAccount class ensures balance never goes negative by validating in the withdraw() method — if balance was public, any code could set it to -1000. INTERNALLY: Java uses access modifiers (private, protected, public). Python uses convention (_protected, __name_mangled) but doesn't enforce it. INDUSTRY TWEAK: prefer immutable objects where possible — once created, state can't change. Eliminates entire categories of bugs (race conditions, invalid state transitions). Java Records and Python dataclasses(frozen=True) support this."
+                "definition": "Bundle data (fields) and methods into a single unit (class), and restrict direct access to internal state. External code interacts through public methods, preventing invalid state transitions. INDUSTRY TWEAK: Prefer immutable objects where possible (Java Records, Python dataclasses). Once created, state cannot change, eliminating entire categories of bugs like race conditions."
               },
               {
                 "term": "Inheritance",
-                "definition": "A class (child) inherits fields and methods from another class (parent), enabling code reuse and 'is-a' relationships. Example: class Dog extends Animal — Dog inherits eat(), sleep() and adds bark(). INTERNALLY: in Java, method dispatch uses a vtable (virtual method table) — each class has a table of function pointers. When you call animal.speak(), the JVM looks up the vtable of the actual runtime type (Dog) and calls Dog.speak(), not Animal.speak(). This is dynamic dispatch. DANGERS: deep inheritance hierarchies (>3 levels) become fragile — a change in the base class can break all descendants (fragile base class problem). INDUSTRY STANDARD: prefer composition over inheritance. Instead of class Dog extends Animal, use class Dog { Animal animal; }. This is more flexible — you can swap Animal implementations at runtime."
+                "definition": "A class inherits fields and methods from a parent class, enabling 'is-a' relationships. DANGERS: Deep inheritance hierarchies (>3 levels) become fragile. INDUSTRY STANDARD: Prefer Composition over Inheritance ('has-a' instead of 'is-a'). It provides more flexibility to swap behaviors at runtime."
               },
               {
                 "term": "Polymorphism",
-                "definition": "Objects of different classes can be treated through the same interface. Two types: (1) Compile-time (method overloading — same method name, different parameter types). (2) Runtime (method overriding — subclass provides its own implementation of a parent method). EXAMPLE: Shape[] shapes = {new Circle(), new Rectangle()}; for (Shape s : shapes) s.draw(); — each shape draws itself differently, but the calling code doesn't know or care which type it is. This is the foundation of the Strategy pattern and plugin architectures. INTERNALLY: runtime polymorphism works via dynamic dispatch (vtable lookup in JVM, vptr in C++)."
+                "definition": "Objects of different classes can be treated through the same interface. Method overriding (runtime) enables plugin architectures. INTERNALLY: Runtime polymorphism works via dynamic dispatch (vtable lookup in the JVM)."
               },
               {
                 "term": "Abstraction",
-                "definition": "Hide complex implementation details and expose only the essential interface. A DatabaseConnection interface has methods connect(), query(), close() — the caller doesn't know if the underlying implementation uses TCP sockets, connection pooling, or SSL. The implementation can change without affecting callers. In Java: abstract classes (partial implementation + abstract methods) and interfaces (pure contract, no state until Java 8 default methods). In Python: abc.ABC with @abstractmethod."
+                "definition": "Hide complex implementation details and expose only the essential interface. The caller doesn't know the underlying implementation. Interfaces and Abstract classes enforce this."
+              }
+            ],
+            "examples": [
+              {
+                "title": "Composition over Inheritance (TypeScript)",
+                "description": "Instead of a `Bird` class inheriting from `Animal` and a `RubberDuck` inheriting from `Bird` (which would awkwardly inherit a `fly()` method it shouldn't have), we compose behaviors.",
+                "code": "interface FlyBehavior {\n  fly(): void;\n}\n\nclass FlyWithWings implements FlyBehavior {\n  fly() { console.log('Flapping wings!'); }\n}\n\nclass NoFly implements FlyBehavior {\n  fly() { console.log('Cannot fly.'); }\n}\n\nclass Duck {\n  constructor(private flyBehavior: FlyBehavior) {}\n  \n  performFly() {\n    this.flyBehavior.fly();\n  }\n}\n\nconst mallard = new Duck(new FlyWithWings());\nmallard.performFly(); // Flapping wings!\n\nconst rubberDuck = new Duck(new NoFly());\nrubberDuck.performFly(); // Cannot fly."
               }
             ]
           },
@@ -621,29 +629,36 @@
             "ISP",
             "DIP"
           ],
-          "summary": "Five design principles that guide maintainable, extensible object-oriented code. Every LLD interviewer expects you to know these.",
+          "summary": "Five design principles that guide maintainable, extensible object-oriented code. Every LLD interviewer expects you to know these and apply them to your code.",
           "explanation": {
-            "overview": "SOLID was introduced by Robert C. Martin (Uncle Bob). These aren't rules — they're guidelines that help you write code that's easy to change, test, and extend.",
+            "overview": "SOLID principles are guidelines that help you write code that is easy to change, test, and extend. They are the backbone of robust Low-Level Design.",
             "key_concepts": [
               {
-                "term": "S — Single Responsibility Principle (SRP)",
-                "definition": "A class should have one and only one reason to change. If a class handles both user authentication AND email sending, changes to the email template format force changes to the authentication class. FIX: split into AuthService and EmailService. HOW TO IDENTIFY VIOLATIONS: if you describe a class and use 'AND' ('this class validates orders AND calculates shipping AND sends notifications'), it violates SRP. Each 'AND' is a separate responsibility. EDGE CASE: don't take this too far — splitting into 100 tiny classes with 1 method each creates 'class explosion' and is equally unmaintainable. Group cohesive operations that change together."
+                "term": "Single Responsibility Principle (SRP)",
+                "definition": "A class should have one and only one reason to change. If a class formats a report AND saves it to a database, it has two reasons to change. Split it."
               },
               {
-                "term": "O — Open/Closed Principle (OCP)",
-                "definition": "Software entities should be open for extension but closed for modification. You should be able to add new behavior without changing existing code. EXAMPLE: a PaymentProcessor with if/else for each payment type (credit card, PayPal, Bitcoin) violates OCP — adding Apple Pay requires modifying the processor. FIX: use Strategy pattern — define a PaymentStrategy interface with process() method. Each payment type implements it. PaymentProcessor takes a PaymentStrategy and calls strategy.process(). Adding Apple Pay = new class, zero changes to existing code. INTERNALLY: this is achieved via polymorphism and dependency injection."
+                "term": "Open/Closed Principle (OCP)",
+                "definition": "Classes should be open for extension but closed for modification. You should be able to add new behavior without touching existing, tested code. Typically achieved using the Strategy Pattern."
               },
               {
-                "term": "L — Liskov Substitution Principle (LSP)",
-                "definition": "Subtypes must be substitutable for their base types without altering program correctness. If function f(Bird b) works correctly, it must also work correctly when f(Penguin p) is called even though Penguin extends Bird. FAMOUS VIOLATION: Square extends Rectangle. Rectangle has setWidth() and setHeight() independently. Square.setWidth() must also set height (to maintain the square invariant). Code that assumes width and height are independent breaks. FIX: don't make Square extend Rectangle — they have different behavioral contracts. Use a common Shape interface instead. HOW TO CHECK: for every method in the base class, the subclass must: (1) accept the same or broader input (contravariance of parameters), (2) return the same or narrower output (covariance of return type), (3) throw the same or fewer exceptions, (4) maintain all invariants of the base class."
+                "term": "Liskov Substitution Principle (LSP)",
+                "definition": "Subtypes must be substitutable for their base types without altering program correctness. A subclass should not throw unexpected exceptions or break base class invariants."
               },
               {
-                "term": "I — Interface Segregation Principle (ISP)",
-                "definition": "No client should be forced to depend on methods it does not use. FAT INTERFACE VIOLATION: interface Worker { void work(); void eat(); void sleep(); }. A Robot implements Worker but doesn't eat() or sleep(). FIX: split into Workable { work(); }, Eatable { eat(); }, Sleepable { sleep(); }. Human implements all three. Robot implements only Workable. INDUSTRY PRACTICE: in microservices, this translates to API design — don't create one monolithic /api/everything endpoint. Create focused endpoints: /api/users, /api/orders, /api/payments."
+                "term": "Interface Segregation Principle (ISP)",
+                "definition": "No client should be forced to depend on methods it does not use. Create small, focused interfaces rather than large, 'fat' ones."
               },
               {
-                "term": "D — Dependency Inversion Principle (DIP)",
-                "definition": "High-level modules should not depend on low-level modules. Both should depend on abstractions. VIOLATION: OrderService directly instantiates MySQLDatabase — coupled to MySQL. Can't easily switch to PostgreSQL or mock for testing. FIX: OrderService depends on a DatabaseRepository interface. MySQLDatabase implements DatabaseRepository. At startup, inject the implementation: new OrderService(new MySQLDatabase()). For testing: new OrderService(new MockDatabase()). INTERNALLY: this is achieved via Inversion of Control (IoC) containers — Spring (Java), Django (Python), NestJS (Node.js) automatically inject dependencies based on type or name. This makes code testable (inject mocks), flexible (swap implementations), and loosely coupled."
+                "term": "Dependency Inversion Principle (DIP)",
+                "definition": "High-level modules should not depend on low-level modules; both should depend on abstractions. Depend on interfaces, not concrete classes. This is the foundation of Dependency Injection."
+              }
+            ],
+            "examples": [
+              {
+                "title": "Applying OCP & DIP (Java)",
+                "description": "Refactoring an OrderService that violates Open/Closed and Dependency Inversion into a completely decoupled, extensible architecture.",
+                "code": "// BAD: Violates OCP (adding a new payment types requires modifying OrderService)\n// BAD: Violates DIP (OrderService depends directly on StripeAPI)\nclass OrderService {\n    public void checkout(Order order, String paymentType) {\n        if (paymentType.equals(\"STRIPE\")) {\n            StripeAPI stripe = new StripeAPI();\n            stripe.charge(order.getAmount());\n        } else if (paymentType.equals(\"PAYPAL\")) {\n            PayPalAPI paypal = new PayPalAPI();\n            paypal.sendPayment(order.getAmount());\n        }\n    }\n}\n\n// GOOD: OCP & DIP applied.\n// 1. Dependency Inversion: OrderService depends on PaymentProcessor interface.\n// 2. Open/Closed: We can add CryptoProcessor without touching OrderService.\ninterface PaymentProcessor {\n    void process(double amount);\n}\n\nclass StripeProcessor implements PaymentProcessor {\n    public void process(double amount) { /* integrate with Stripe */ }\n}\n\nclass OrderService {\n    private final PaymentProcessor processor;\n    \n    // Dependency Injection\n    public OrderService(PaymentProcessor processor) {\n        this.processor = processor;\n    }\n    \n    public void checkout(Order order) {\n        this.processor.process(order.getAmount());\n    }\n}"
               }
             ]
           },
@@ -651,19 +666,19 @@
         },
         {
           "id": "ch01.s03",
-          "title": "Design Patterns (GoF) — Essentials for Interviews",
+          "title": "Design Patterns — Essentials for Interviews",
           "parent_id": "ch01",
           "order": 3,
           "tags": [
             "design-patterns",
-            "creational",
-            "structural",
-            "behavioral",
-            "GoF"
+            "singleton",
+            "factory",
+            "strategy",
+            "observer"
           ],
-          "summary": "The most frequently tested design patterns with internal mechanics, real-world examples, and interview scenarios.",
+          "summary": "The most frequently tested design patterns with internal mechanics, real-world constraints, and interview scenarios.",
           "explanation": {
-            "overview": "Design patterns are reusable solutions to common software design problems. The 'Gang of Four' (GoF) catalogued 23 patterns in 3 categories. You don't need to memorize all 23 — focus on the 8-10 that appear most often in interviews."
+            "overview": "Design patterns are reusable solutions to common software design problems. In interviews, applying the right pattern shows maturity. Do not force them; use them when the problem demands extensibility."
           },
           "children": [
             {
@@ -674,26 +689,44 @@
               "tags": [
                 "singleton",
                 "factory",
-                "builder",
-                "prototype"
+                "builder"
               ],
               "explanation": {
                 "key_concepts": [
                   {
                     "term": "Singleton",
-                    "definition": "Ensure a class has exactly one instance globally. INTERNAL IMPLEMENTATION (thread-safe in Java): private static volatile Singleton instance; private constructor; public static Singleton getInstance() { if (instance == null) { synchronized(Singleton.class) { if (instance == null) instance = new Singleton(); } } return instance; }. This is double-checked locking — the first if avoids the expensive synchronized block on every call, the second if inside synchronized prevents two threads both creating instances. volatile ensures the instance is visible across threads (prevents instruction reordering). ALTERNATIVE: Java enum singleton — enum Singleton { INSTANCE; } — inherently thread-safe, serialization-safe, and prevents reflection attacks. USE CASES: database connection pool, logger, configuration manager, thread pool. EDGE CASE: Singleton makes unit testing hard (global state is hard to mock). FIX: use dependency injection instead — register the singleton in the IoC container and inject it. The DI container manages the lifecycle (singleton scope)."
+                    "definition": "Ensures a class has exactly one instance globally. USE CASES: Database connection pools, configuration managers, thread pools."
                   },
                   {
                     "term": "Factory Method",
-                    "definition": "Define an interface for creating objects but let subclasses decide which class to instantiate. EXAMPLE: interface NotificationFactory { Notification create(); }. SMSFactory creates SMSNotification. EmailFactory creates EmailNotification. PushFactory creates PushNotification. The calling code uses NotificationFactory.create() without knowing the concrete type. WHY: decouples creation logic from usage. Adding a new notification type (Slack) = new class + new factory, no changes to existing code (OCP). INDUSTRY USE: JDBC DriverManager.getConnection() — returns a Connection object without the caller knowing if it's MySQL, PostgreSQL, or Oracle underneath."
+                    "definition": "Defines an interface for creating objects but lets subclasses decide which instantiate. USE CASES: Cross-platform UI elements, picking different database drivers."
                   },
                   {
                     "term": "Builder",
-                    "definition": "Construct complex objects step by step. Useful when a constructor would need 10+ parameters. EXAMPLE: User user = User.builder().name('Alice').email('a@b.com').age(30).role(ADMIN).build(); INTERNAL: the Builder class has the same fields as the target object + setter methods that return 'this' (fluent API). build() validates all required fields and creates the immutable target object. EDGE CASE: Java Lombok @Builder generates this automatically. Python dataclasses or attrs serve a similar purpose. USE CASES: SQL query builders, HTTP request builders, complex config objects."
+                    "definition": "Construct complex objects step by step. Useful when a constructor has many optional parameters. USE CASES: Building complex SQL queries, generating API request payloads."
+                  }
+                ],
+                "examples": [
+                  {
+                    "title": "Thread-Safe Singleton with Double-Checked Locking (Java)",
+                    "description": "The industry standard way to write a lazy-loaded, thread-safe Singleton without taking a performance hit on every access.",
+                    "code": "public class DatabaseConnectionPool {\n    // volatile ensures changes to instance are immediately visible to other threads\n    private static volatile DatabaseConnectionPool instance;\n    \n    // private constructor prevents instantiation from outside\n    private DatabaseConnectionPool() {\n        // init pool\n    }\n    \n    public static DatabaseConnectionPool getInstance() {\n        if (instance == null) { // First check (no locking)\n            synchronized (DatabaseConnectionPool.class) {\n                if (instance == null) { // Second check (with locking)\n                    instance = new DatabaseConnectionPool();\n                }\n            }\n        }\n        return instance;\n    }\n}"
                   },
                   {
-                    "term": "Prototype",
-                    "definition": "Create new objects by cloning an existing object rather than constructing from scratch. Useful when object creation is expensive (DB-heavy initialization, complex calculation). INTERNAL: implement Cloneable interface (Java) or __copy__/__deepcopy__ (Python). EDGE CASE: shallow copy vs deep copy — shallow copy shares references to nested objects (modifying nested object in clone affects original). Use deep copy when nested objects must be independent."
+                    "title": "Singleton in Python (Metaclass approach)",
+                    "description": "In Python, the most robust way to implement a Singleton is using a metaclass, ensuring any call to `Class()` returns the same instance.",
+                    "code": "class SingletonMeta(type):\n    _instances = {}\n    def __call__(cls, *args, **kwargs):\n        if cls not in cls._instances:\n            # create the instance and save it\n            cls._instances[cls] = super().__call__(*args, **kwargs)\n        return cls._instances[cls]\n\nclass DatabaseConnection(metaclass=SingletonMeta):\n    def __init__(self):\n        print(\"Initializing connection...\")\n\ndb1 = DatabaseConnection()\ndb2 = DatabaseConnection()\nprint(db1 is db2)  # Output: True (only initialized once)"
+                  },
+                  {
+                    "title": "Factory Pattern (TypeScript / Spring Boot)",
+                    "description": "A notification system where the factory determines which notification class to instantiate. In modern Java/Spring, this is often done using Dependency Injection rather than manual static factories.",
+                    "code": "// --- TypeScript Manual Factory ---\ninterface Notification { send(msg: string): void; }\n\nclass EmailNotification implements Notification {\n    send(msg: string) { console.log(`Email sent: ${msg}`); }\n}\nclass PushNotification implements Notification {\n    send(msg: string) { console.log(`Push sent: ${msg}`); }\n}\n\nclass NotificationFactory {\n    static create(type: 'EMAIL' | 'PUSH'): Notification {\n        switch(type) {\n            case 'EMAIL': return new EmailNotification();\n            case 'PUSH': return new PushNotification();\n            default: throw new Error('Unknown type');\n        }\n    }\n}\n\n// --- Spring Boot Factory via Dependency Injection ---\n// Define beans for each type, then inject a Map<String, Notification>\n// This adheres perfectly to Open/Closed Principle!\n@Service\npublic class NotificationService {\n    // Spring automatically populates this map where keys are component names\n    private final Map<String, Notification> notificationStrategies;\n\n    @Autowired\n    public NotificationService(Map<String, Notification> strategies) {\n        this.notificationStrategies = strategies;\n    }\n\n    public void send(String type, String message) {\n        Notification notifier = notificationStrategies.get(type.toLowerCase() + \"Notification\");\n        if (notifier == null) throw new IllegalArgumentException(\"Invalid type\");\n        notifier.send(message);\n    }\n}"
+                  }
+                ],
+                "use_cases": [
+                  {
+                    "system": "Logging Framework",
+                    "why": "A Singleton ensures all parts of the application write logs to the exact same file stream to avoid write contention."
                   }
                 ]
               },
@@ -706,27 +739,35 @@
               "order": 2,
               "tags": [
                 "adapter",
-                "decorator",
                 "facade",
-                "proxy"
+                "decorator"
               ],
               "explanation": {
                 "key_concepts": [
                   {
                     "term": "Adapter",
-                    "definition": "Convert the interface of a class into another interface clients expect. EXAMPLE: your code expects a MediaPlayer interface with play(filename). You have a third-party AdvancedMediaPlayer with playVLC() and playMP4(). An Adapter wraps AdvancedMediaPlayer and implements MediaPlayer, translating play() calls to the appropriate method. REAL WORLD: Java Arrays.asList() adapts an array into a List interface. JDBC adapts database-specific protocols into a common java.sql interface."
-                  },
-                  {
-                    "term": "Decorator",
-                    "definition": "Dynamically add behavior to an object without modifying its class. EXAMPLE: InputStream is = new BufferedInputStream(new FileInputStream('file.txt')). FileInputStream reads bytes. BufferedInputStream wraps it and adds buffering. You could further wrap with GZIPInputStream for compression. Each decorator implements the same interface and delegates to the wrapped object. INTERNAL: each decorator holds a reference to the next component in the chain. When read() is called, BufferedInputStream's read() fills a buffer by calling FileInputStream.read(), then serves from the buffer. WHY NOT inheritance? Inheritance is static (decided at compile time). Decorators are dynamic (decided at runtime) and composable — you can mix and match any combination."
+                    "definition": "Allows classes with incompatible interfaces to work together by wrapping its own interface around that of an already existing class. USE CASES: Integrating third-party billing APIs with your legacy billing interface."
                   },
                   {
                     "term": "Facade",
-                    "definition": "Provide a simplified interface to a complex subsystem. EXAMPLE: a VideoConverter facade with method convert(filename, format) internally coordinates CodecFactory, AudioMixer, BitrateReader, VideoFile, and OggCompressionCodec — the client calls one method instead of orchestrating 5 classes. USE IN SYSTEM DESIGN: API Gateway is a facade — clients call one endpoint, the gateway orchestrates calls to multiple microservices."
+                    "definition": "Provides a simplified interface to a larger, more complex body of code (a subsystem). USE CASES: Creating a simple `OrderProcessor.process()` that hides the complexity of `InventoryCheck`, `PaymentGateway`, and `ShippingService`."
                   },
                   {
-                    "term": "Proxy",
-                    "definition": "Provide a surrogate or placeholder for another object to control access. Types: (1) Protection Proxy — checks permissions before delegating (does the user have ADMIN role?). (2) Virtual Proxy — lazy initialization (load heavy object only when first accessed). (3) Caching Proxy — cache results of expensive calls. (4) Logging Proxy — log all method calls. REAL WORLD: Java's java.lang.reflect.Proxy, Spring AOP proxies (add transaction management, logging, security to methods without modifying them)."
+                    "term": "Decorator",
+                    "definition": "Allows behavior to be added to an individual object, dynamically, without affecting the behavior of other objects from the same class. Solves the \"subclass explosion\" problem. USE CASES: Java `InputStream` wrappers, adding compression/encryption to streams."
+                  }
+                ],
+                "examples": [
+                  {
+                    "title": "Adapter Pattern (Python)",
+                    "description": "Adapting an old legacy XML billing system to work with a modern JSON interface.",
+                    "code": "class ModernJSONBillingAPI:\n    def charge_customer(self, user_id: str, amount: float):\n        pass\n\nclass LegacyXMLBillingSystem:\n    def make_payment(self, user_xml: str, amnt_cents: int):\n        print(f\"Charging {amnt_cents} cents to {user_xml}\")\n\n# The Adapter\nclass BillingAdapter(ModernJSONBillingAPI):\n    def __init__(self, legacy_system: LegacyXMLBillingSystem):\n        self.legacy_system = legacy_system\n        \n    def charge_customer(self, user_id: str, amount: float):\n        # Convert data formats\n        xml_payload = f\"<user><id>{user_id}</id></user>\"\n        cents = int(amount * 100)\n        # Call legacy system\n        self.legacy_system.make_payment(xml_payload, cents)\n\n# Usage\nlegacy = LegacyXMLBillingSystem()\nadapter = BillingAdapter(legacy)\nadapter.charge_customer(\"alice123\", 50.99) # works seamlessly!"
+                  }
+                ],
+                "use_cases": [
+                  {
+                    "system": "API Gateway (Facade in System Design)",
+                    "why": "An API Gateway acts as a Facade. Mobile clients make a single call to `/api/dashboard`, and the gateway internally aggregates data from the UserService, PostService, and MentionService to return a single simplified JSON tree."
                   }
                 ]
               },
@@ -740,31 +781,39 @@
               "tags": [
                 "strategy",
                 "observer",
-                "command",
-                "state",
-                "chain-of-responsibility"
+                "state"
               ],
               "explanation": {
                 "key_concepts": [
                   {
-                    "term": "Strategy",
-                    "definition": "Define a family of algorithms, encapsulate each one, and make them interchangeable. EXAMPLE: SortStrategy interface with sort(List). Implementations: QuickSortStrategy, MergeSortStrategy, TimSortStrategy. The context (Sorter class) receives a strategy and delegates: sorter.setStrategy(new QuickSortStrategy()); sorter.sort(data);. At runtime, you can switch to MergeSortStrategy without changing Sorter. SYSTEM DESIGN USE: rate limiting algorithms (TokenBucketStrategy, SlidingWindowStrategy), compression algorithms, authentication methods, caching strategies. The Strategy pattern is the go-to answer for 'how do you make this configurable?'"
+                    "term": "Strategy Pattern",
+                    "definition": "Encapsulate a family of algorithms and make them interchangeable. The absolute most commonly tested pattern in LLD."
                   },
                   {
-                    "term": "Observer (Pub/Sub)",
-                    "definition": "When one object (subject) changes state, all registered observers are notified automatically. INTERNAL: Subject maintains a list of Observer references. On state change, iterates the list and calls observer.update(). Observers can register/unregister dynamically. EXAMPLE: a Stock object notifies all subscribed Dashboards and AlertServices when price changes. SYSTEM DESIGN PARALLEL: this is the conceptual basis for event-driven architectures — Kafka topics (subject) notifying consumer groups (observers). EDGE CASE: in synchronous observer pattern, a slow observer blocks all subsequent observers. FIX: notify observers asynchronously (thread pool or event queue)."
+                    "term": "Observer Pattern",
+                    "definition": "Define a one-to-many dependency. When one object (Subject) changes state, all dependents (Observers) are notified. The foundation of Event-Driven Architecture."
+                  }
+                ],
+                "examples": [
+                  {
+                    "title": "Strategy Pattern: Parking Lot Pricing (Python / Spring)",
+                    "description": "Strategy lets us swap pricing models at runtime. Python's functions-as-first-class-citizens means Strategy can often just be passing a function!",
+                    "code": "# --- Python: Strategy as Functions ---\ndef hourly_pricing(minutes: int) -> float:\n    import math\n    return math.ceil(minutes / 60.0) * 10.0\n\ndef flat_rate_pricing(minutes: int) -> float:\n    return 50.0\n\nclass Ticket:\n    def __init__(self, pricing_strategy_func):\n        self.strategy = pricing_strategy_func\n        self.minutes_parked = 150\n        \n    def close_ticket(self) -> float:\n        return self.strategy(self.minutes_parked)\n\nhourly_ticket = Ticket(hourly_pricing)\nprint(hourly_ticket.close_ticket()) # 30.0\n\n// --- Spring Boot / Java: Strategy Injection ---\n// Define the interface\npublic interface PricingStrategy { double calculate(int minutes); }\n\n@Component(\"hourly\")\npublic class HourlyPricing implements PricingStrategy { /*...*/ }\n\n@Component(\"flat\")\npublic class FlatRatePricing implements PricingStrategy { /*...*/ }\n\n// In your Service, Spring injects the chosen strategy dynamically based on config or factory map!"
                   },
                   {
-                    "term": "Command",
-                    "definition": "Encapsulate a request as an object, allowing you to parameterize, queue, log, and undo operations. EXAMPLE: interface Command { void execute(); void undo(); }. LightOnCommand stores a reference to a Light and calls light.turnOn() in execute(), light.turnOff() in undo(). A RemoteControl stores a stack of executed commands and can undo() by popping and calling command.undo(). USE CASES: undo/redo in text editors, transaction logging, task queuing (each queued task is a Command object)."
+                    "title": "Observer Pattern: Stock Ticker (TypeScript)",
+                    "description": "A stock price updates, and multiple decoupled UI components need to react to the change.",
+                    "code": "interface Observer { update(price: number): void; }\n\nclass StockTicker {\n    private observers: Observer[] = [];\n    private price: number = 0;\n    \n    subscribe(obs: Observer) { this.observers.push(obs); }\n    \n    setPrice(newPrice: number) {\n        this.price = newPrice;\n        this.notify();\n    }\n    \n    private notify() {\n        for (const obs of this.observers) {\n            obs.update(this.price);\n        }\n    }\n}\n\nclass MobileAppDashboard implements Observer {\n    update(price: number) { console.log(`Mobile UI updated: $${price}`); }\n}"
+                  }
+                ],
+                "use_cases": [
+                  {
+                    "system": "Rate Limiter",
+                    "why": "Use Strategy pattern to swap between Token Bucket, Leaky Bucket, and Sliding Window algorithms depending on the API endpoint configuration."
                   },
                   {
-                    "term": "State",
-                    "definition": "Allow an object to change its behavior when its internal state changes. The object appears to change its class. EXAMPLE: a VendingMachine has states: NoCoin, HasCoin, Dispensing, SoldOut. Each state is a separate class implementing VendingMachineState interface. In NoCoin state, insertCoin() transitions to HasCoin. In HasCoin, pressButton() transitions to Dispensing. Each state handles the same events differently — no giant if/else blocks. INTERNAL: the context (VendingMachine) holds a reference to the current state object. All event methods delegate to currentState.handle(). State transitions: currentState.handle() returns the next state, or directly sets context.setState(new HasCoinState())."
-                  },
-                  {
-                    "term": "Chain of Responsibility",
-                    "definition": "Pass a request along a chain of handlers. Each handler decides to process the request or pass it to the next handler. EXAMPLE: HTTP middleware chain — AuthHandler → RateLimitHandler → LogHandler → BusinessLogicHandler. AuthHandler checks token — if invalid, returns 401. If valid, passes to RateLimitHandler. RateLimitHandler checks quota — if exceeded, returns 429. If OK, passes to LogHandler, etc. SYSTEM DESIGN USE: Java servlet filters, Express.js middleware, NGINX request processing pipeline, Netty channel pipeline."
+                    "system": "Distributed Message Queue (Kafka)",
+                    "why": "In-memory Pub/Sub systems in LLD interviews (like designing a local Kafka) rely entirely on the Observer pattern."
                   }
                 ]
               },
@@ -774,13 +823,56 @@
         },
         {
           "id": "ch01.s04",
-          "title": "LLD Interview Framework",
+          "title": "Modern LLD: Domain-Driven Design (DDD) Tactical Patterns",
           "parent_id": "ch01",
           "order": 4,
           "tags": [
+            "DDD",
+            "entities",
+            "value-objects",
+            "aggregates"
+          ],
+          "summary": "Move beyond basic OOP to model complex business logic using Entities, Value Objects, and Aggregates.",
+          "explanation": {
+            "overview": "Domain-Driven Design (DDD) provides a structured approach to building complex software by aligning the code structure tightly with the business domain. Tactical DDD patterns are advanced LLD techniques that ensure data integrity and clean code boundaries.",
+            "key_concepts": [
+              {
+                "term": "Entities",
+                "definition": "Objects that possess a distinct identity that persists over time, even if their attributes change. Example: A 'User' with ID 123 is the same user even if they change their email address. They encapsulate state and business logic."
+              },
+              {
+                "term": "Value Objects",
+                "definition": "Objects that have no conceptual identity; they are defined entirely by their attributes. They must be IMMUTABLE. Example: `Money(amount, currency)`, `Address(street, city, zip)`. If an address changes, you don't mutate the Address object; you replace it with a completely new Address object. WHY: Eliminates side-effects and makes code vastly easier to reason about."
+              },
+              {
+                "term": "Aggregates & Aggregate Roots",
+                "definition": "A cluster of related Entities and Value Objects treated as a single unit for data changes. Every Aggregate has an 'Aggregate Root' (one specific Entity). RULE: External classes can ONLY hold references to the Aggregate Root, never to its internal children. The Root is responsible for enforcing all business invariants (rules) for the entire cluster."
+              }
+            ],
+            "examples": [
+              {
+                "title": "Entities vs Value Objects (Java)",
+                "description": "Showing how a mutable Order Entity is composed of immutable Money Value Objects.",
+                "code": "// VALUE OBJECT: Immutable, no ID, defined by properties\nrecord Money(BigDecimal amount, String currency) {\n    public Money add(Money other) {\n        if (!this.currency.equals(other.currency)) throw new IllegalArgumentException(\"Currency mismatch\");\n        return new Money(this.amount.add(other.amount), this.currency);\n    }\n}\n\n// ENTITY (AGGREGATE ROOT): Mutable, has ID, enforces invariants\nclass Order {\n    private final String orderId;\n    private OrderStatus status;\n    private Money totalAmount; // Using Value Object\n    \n    public Order(String id) {\n        this.orderId = id;\n        this.status = OrderStatus.CREATED;\n        this.totalAmount = new Money(BigDecimal.ZERO, \"USD\");\n    }\n    \n    // Business logic centralized here, not in a \"Service\" class\n    public void addItem(OrderItem item) {\n        if (status != OrderStatus.CREATED) {\n            throw new IllegalStateException(\"Cannot modify paid order\");\n        }\n        this.totalAmount = this.totalAmount.add(item.getPrice());\n    }\n}"
+              }
+            ],
+            "use_cases": [
+              {
+                "system": "E-Commerce Cart",
+                "why": "The Cart is the Aggregate Root. CartItems are internal entities. You cannot directly modify a CartItem from outside; you must call `cart.updateItemQuantity()`. This ensures the Cart can instantly recalculate its total and enforce rules like 'max 10 items per cart'."
+              }
+            ]
+          },
+          "children": []
+        },
+        {
+          "id": "ch01.s05",
+          "title": "LLD Interview Framework",
+          "parent_id": "ch01",
+          "order": 5,
+          "tags": [
             "LLD-interview",
-            "framework",
-            "class-diagram"
+            "framework"
           ],
           "summary": "A structured 6-step approach to ace any low-level design interview.",
           "explanation": {
@@ -788,32 +880,76 @@
               {
                 "step": 1,
                 "title": "Clarify Requirements & Constraints",
-                "detail": "Ask: Who are the actors? (users, admins, system). What are the core use cases? What's the scale? (single machine or distributed). Any real-time requirements? Example for 'Design a Parking Lot': How many floors/spots? Spot types (compact, regular, large)? Payment? Entry/exit gates? Hourly vs flat rate?"
+                "detail": "Ask: Who are the actors? What are the core use cases? Example for 'Design a Parking Lot': How many floors? Spot types (compact, large)? Payment required at exit gates?"
               },
               {
                 "step": 2,
-                "title": "Identify Core Entities",
-                "detail": "List the nouns: ParkingLot, Floor, ParkingSpot, Vehicle (Car, Truck, Motorcycle), Ticket, Payment, EntryGate, ExitGate. Each becomes a class."
+                "title": "Identify Core Entities & Enums",
+                "detail": "List the nouns: ParkingLot, Floor, ParkingSpot, Vehicle (Car, Truck), Ticket. Define Enums: SpotType, VehicleType, TicketStatus."
               },
               {
                 "step": 3,
                 "title": "Define APIs / Interfaces",
-                "detail": "What operations exist? parkVehicle(vehicle) → Ticket, unparkVehicle(ticket) → Payment, getAvailableSpots(type) → int. Define input/output for each."
+                "detail": "What operations exist? `parkVehicle(vehicle) -> Ticket`, `scanTicket(ticket) -> PaymentReceipt`. Define input/output."
               },
               {
                 "step": 4,
                 "title": "Establish Relationships",
-                "detail": "ParkingLot HAS-MANY Floors (composition). Floor HAS-MANY ParkingSpots (composition). ParkingSpot HAS-A Vehicle (association, nullable). Ticket references ParkingSpot and Vehicle. Use UML notation."
+                "detail": "ParkingLot HAS-MANY Floors (composition). ParkingSpot HAS-A Vehicle (association). Draw a quick class diagram conceptually."
               },
               {
                 "step": 5,
                 "title": "Apply Design Patterns",
-                "detail": "Strategy pattern for payment (CashPayment, CardPayment, UPIPayment). Factory for vehicle creation. Singleton for ParkingLot (one lot). Observer for spot availability notifications."
+                "detail": "Strategy pattern for Pricing. Factory for Ticket generation. Singleton for the ParkingLot instance."
               },
               {
                 "step": 6,
-                "title": "Code with Concurrency & Edge Cases",
-                "detail": "Two cars arriving simultaneously trying to park in the last spot — use synchronized or CAS (compare-and-swap) on spot.assignVehicle(). Handle: lot full, invalid ticket, payment failure, entry/exit gate malfunction."
+                "title": "Code with Concurrency edge cases",
+                "detail": "Two cars arriving simultaneously trying to park in the last spot — use `ConcurrentHashMap` or a `ReadWriteLock` on spot assignment."
+              }
+            ]
+          },
+          "children": []
+        },
+        {
+          "id": "ch01.s06",
+          "title": "Advanced Machine Coding: Concurrency, State, & Edge Cases",
+          "parent_id": "ch01",
+          "order": 6,
+          "tags": [
+            "machine-coding",
+            "concurrency",
+            "thread-safety",
+            "error-handling"
+          ],
+          "summary": "The secret to passing elite LLD/Machine Coding rounds: Designing thread-safe classes, handling concurrent access, and bulletproof error management.",
+          "explanation": {
+            "overview": "Senior developer blogs emphasize that elite machine coding rounds (like at Uber, Atlassian, or Flipkart) aren't just about drawing classes. They test your ability to write code that survives a multi-threaded, highly concurrent production environment where edge cases are the norm.",
+            "key_concepts": [
+              {
+                "term": "Concurrency & Thread Safety",
+                "definition": "If multiple threads call a method simultaneously, will the internal state corrupt? For example, in a Movie Ticket Booking system, two users clicking 'book' on the exact same seat simultaneously. FIX: Use thread-safe collections (`ConcurrentHashMap`), atomic variables (`AtomicInteger`), or explicit locking (`ReentrantLock`, `synchronized`). Prefer optimistic locking (CAS) for high read, low write scenarios, and pessimistic locking for high contention."
+              },
+              {
+                "term": "Immutability as a Concurrency Strategy",
+                "definition": "The easiest way to make a class thread-safe is to make it immutable. If internal state cannot change after instantiation, multiple threads can read it simultaneously without any locks. (e.g. representing a `Seat` as an immutable object, and keeping availability in a separate `AtomicBoolean`)."
+              },
+              {
+                "term": "Robust Error Management",
+                "definition": "LLD code should never crash silently or throw generic `Exception`. Define custom domain exceptions (`SeatAlreadyBookedException`, `InsufficientFundsException`). Handle edge cases proactively: What happens if a user tries to split a $0 expense? What if a circular debt exists?"
+              }
+            ],
+            "examples": [
+              {
+                "title": "Thread-Safe Booking System (Java)",
+                "description": "An example of handling concurrent bookings using ReentrantLock to ensure no double-booking occurs without locking the entire system.",
+                "code": "public class Theater {\n    private final Map<String, Seat> seats = new HashMap<>();\n    private final Lock globalLock = new ReentrantLock();\n    \n    // BAD approach: synchronized method locks the whole Theater. Only 1 booking globally at a time!\n    // public synchronized boolean bookSeatBad(String seatId) { ... }\n    \n    // GOOD approach: Fine-grained locking. Lock only the specific seat.\n    public boolean bookSeat(String seatId, User user) {\n        Seat seat = seats.get(seatId);\n        if (seat == null) throw new InvalidSeatException(seatId);\n        \n        // Try to lock the specific seat. If another thread holds the lock, tryLock returns false immediately.\n        if (seat.getLock().tryLock()) {\n            try {\n                if (seat.isAvailable()) {\n                    seat.book(user);\n                    return true;\n                }\n                return false; // Already booked\n            } finally {\n                seat.getLock().unlock(); // ALWAYS unlock in finally block\n            }\n        }\n        return false; // Could not acquire lock, meaning someone else is booking it right now\n    }\n}"
+              }
+            ],
+            "use_cases": [
+              {
+                "system": "Library Management / Inventory System",
+                "why": "When stock runs low (e.g. only 1 copy of a book left), concurrent checkout requests must be serialized. Using a database transaction with `SELECT FOR UPDATE` simulates this at the DB level, but in an in-memory LLD round, you must use application-level locking."
               }
             ]
           },
@@ -822,16 +958,12 @@
       ],
       "references": [
         {
+          "title": "Domain-Driven Design: Tackling Complexity in the Heart of Software (Eric Evans)",
+          "url": "https://www.amazon.com/Domain-Driven-Design-Tackling-Complexity-Software/dp/0321125215"
+        },
+        {
           "title": "Design Patterns: Elements of Reusable OO Software (GoF Book)",
           "url": "https://www.amazon.com/Design-Patterns-Elements-Reusable-Object-Oriented/dp/0201633612"
-        },
-        {
-          "title": "Head First Design Patterns",
-          "url": "https://www.amazon.com/Head-First-Design-Patterns-Brain-Friendly/dp/0596007124"
-        },
-        {
-          "title": "Clean Code — Robert C. Martin",
-          "url": "https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882"
         },
         {
           "title": "Refactoring.Guru — Design Patterns",
@@ -853,9 +985,19 @@
       ],
       "summary": "The fundamental properties that define distributed systems — scalability, availability, reliability, consistency, and the trade-offs between them.",
       "explanation": {
-        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties.",
+        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties. DEVELOPER BLOG INSIGHT: 'Jumping from monolithic to distributed systems is like jumping from an acoustic guitar to a full symphony orchestra in a hurricane.'",
         "how_it_works_internally": "Distributed systems face challenges that monolithic systems don't: network is unreliable (packets drop, latency spikes), clocks are unsynchronized (each machine has slightly different time), nodes fail independently (one server crashes while others continue), and there's no shared memory (data must be explicitly communicated). These realities force you to make design trade-offs at every layer."
       },
+      "limitations": [
+        "Network Unreliability: The Fallacies of Distributed Computing state the network is never 100% reliable. You must code for latency spikes, partitions, and dropped packets.",
+        "Increased Observability Overhead: When a request traverses 15 microservices, finding which one failed requires distributed tracing (Jaeger, Zipkin) and centralized logging (ELK).",
+        "Data Consistency: Unlike a monolithic SQL database, enforcing ACID guarantees across multiple geographic regions is mathematically impossible without sacrificing availability (CAP Theorem)."
+      ],
+      "common_mistakes": [
+        "Assuming zero latency between internal microservices.",
+        "Failing to implement Circuit Breakers (like Resilience4j or PyBreaker) when talking to downstream dependencies.",
+        "Using distributed systems when a monolithic Postgres instance and a simple state API would suffice (YAGNI)."
+      ],
       "children": [
         {
           "id": "ch02.s01",
@@ -959,6 +1101,13 @@
                 "term": "Graceful Degradation",
                 "definition": "When a component fails, the system continues with reduced functionality rather than total failure. EXAMPLE: if the recommendation engine is down, Amazon still shows the product page — just without 'Customers also bought'. If the cache is down, the system falls back to database (slower but functional). If a non-critical microservice is down, the API returns partial data with a flag indicating degraded mode. IMPLEMENTATION: circuit breakers (see ch13), fallback methods, feature flags to disable failing features."
               }
+            ],
+            "examples": [
+              {
+                "title": "Circuit Breakers in Java & Python",
+                "description": "To prevent cascading failures, top engineering blogs recommend the Circuit Breaker pattern. It stops requests to a failing service immediately, giving it time to recover rather than overwhelming it.",
+                "code": "// --- Java: Resilience4j (Industry Standard) ---\n// Configure the breaker to open if 50% of the last 100 requests fail\nCircuitBreakerConfig config = CircuitBreakerConfig.custom()\n    .failureRateThreshold(50)\n    .slidingWindowSize(100)\n    .waitDurationInOpenState(Duration.ofMillis(1000))\n    .build();\nCircuitBreaker breaker = CircuitBreaker.of(\"paymentService\", config);\n\n// Decorate the risky network call\nSupplier<String> decoratedSupplier = CircuitBreaker\n    .decorateSupplier(breaker, backendService::doSomething);\n\n// --- Python: Tenacity & PyBreaker ---\n# Python uses decorators heavily for this. Tenacity handles intelligent retries with exponential backoff.\n@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(5))\ndef make_flaky_request():\n    return requests.get(\"http://flaky-service/api\").json()\n\n# PyBreaker is pure circuit breaking\n@circuit(failure_threshold=5, recovery_timeout=60)\ndef call_database():\n    return db.query(\"SELECT * FROM users\")"
+              }
             ]
           },
           "children": []
@@ -1007,6 +1156,20 @@
               "relationship": "deep-dive"
             }
           ],
+          "advanced_tweaks": [
+            {
+              "technique": "Quorum Reads/Writes (Dynamo Topology)",
+              "when_to_use": "When you need tunable consistency. Read/Write nodes (R/W) must overlap: W + R > N (Total Replicas).",
+              "how": "If N=3, W=2, R=2 ensures strong consistency because every Read checks at least 2 nodes, guaranteeing it sees the latest write (which hit at least 2 nodes)."
+            }
+          ],
+          "examples": [
+            {
+              "title": "Consensus Implementations in The Wild",
+              "description": "When building distributed locks or leader election, don't write your own Consensus algorithm. Developer blogs scream: 'Use existing libraries!'",
+              "code": "- Java: MicroRaft (feature-complete, stable implementation of Raft) or Apache Ratis.\n- Python: rraft-py (Python bindings for the hyper-fast Rust tikv/raft-rs crate) or PyRaftLog for pure Python implementations.\n- Go: Hashicorp Raft (used in Consul and Nomad, extremely production hardened)."
+            }
+          ],
           "children": []
         }
       ],
@@ -1043,9 +1206,19 @@
       ],
       "summary": "Complete networking guide — OSI/TCP-IP layers, DNS resolution, TCP vs UDP internals, HTTP evolution, REST vs gRPC vs GraphQL, WebSockets, and protocol selection for system design.",
       "explanation": {
-        "overview": "Every system design involves components communicating over a network. Understanding protocols — their strengths, weaknesses, and internals — lets you make informed choices about how services talk to each other. This chapter covers everything from low-level TCP to high-level API paradigms.",
+        "overview": "Every system design involves components communicating over a network. Understanding protocols — their strengths, weaknesses, and internals — lets you make informed choices about how services talk to each other. This chapter covers everything from low-level TCP to high-level API paradigms. DEVELOPER BLOG INSIGHT: 'There is no perfect protocol; every choice is a trade-off between latency, throughput, complexity, and payload size.'",
         "how_it_works_internally": "Network communication follows a layered model. Each layer adds its own header and handles a specific concern: physical transmission (L1-L2), addressing and routing (L3 IP), reliable delivery (L4 TCP/UDP), and application semantics (L7 HTTP/gRPC). When you type a URL, your request traverses all these layers down on the client, crosses the network, and traverses up on the server."
       },
+      "limitations": [
+        "gRPC Debugging: Because Protobuf is binary, you cannot just use `curl` or browser dev tools easily to inspect payloads. You need specific tooling like `grpcurl` or BloomRPC.",
+        "WebSocket Scaling: Unlike stateless REST requests, WebSockets hold an open file descriptor on the server. To scale 1M concurrent users, you need dedicated connection handling servers and a Pub/Sub backplane (like Redis or Kafka) to route messages across instances.",
+        "HTTP/3 (QUIC) Adoption: While excellent for mobile networks (handles packet loss better than TCP), many enterprise firewalls heavily throttle or block UDP traffic, forcing fallbacks to HTTP/2."
+      ],
+      "common_mistakes": [
+        "Choosing gRPC for a public-facing API without realizing browsers need a translation proxy (gRPC-Web).",
+        "Overusing WebSockets for simple request-response flows where long-polling or Server-Sent Events (SSE) would be drastically simpler.",
+        "Ignoring TLS handshake overhead in low-latency internal microservices (often internal microservices use plain HTTP/2 or mutual TLS depending on zero-trust policies)."
+      ],
       "children": [
         {
           "id": "ch03.s01",
@@ -1172,6 +1345,18 @@
                 "term": "Server-Sent Events (SSE)",
                 "definition": "Unidirectional server → client push over HTTP. Client opens a long-lived HTTP connection (Content-Type: text/event-stream), and the server sends events as they occur. Unlike WebSocket, SSE is HTTP-based — works with existing infrastructure (proxies, CDN, auth). SIMPLER than WebSocket but one-way only. Client can't send through the SSE connection (uses regular HTTP for sending). Auto-reconnect built into the browser API (EventSource). USE WHEN: live notifications, feed updates, stock tickers — any scenario where only the server pushes data."
               }
+            ],
+            "examples": [
+              {
+                "title": "gRPC Implementation: Java vs Python",
+                "description": "gRPC requires defining the contract first in a `.proto` file, then generating the code. Compare how Java strongly types the implementation versus Python's dynamic approach.",
+                "code": "// --- Example .proto file ---\n// service Greeter { rpc SayHello (HelloRequest) returns (HelloReply) {} }\n\n// --- Java (Spring Boot gRPC) ---\n@GrpcService\npublic class GreeterServiceImpl extends GreeterGrpc.GreeterImplBase {\n    @Override\n    public void sayHello(HelloRequest req, StreamObserver<HelloReply> responseObserver) {\n        HelloReply reply = HelloReply.newBuilder().setMessage(\"Hello \" + req.getName()).build();\n        responseObserver.onNext(reply);\n        responseObserver.onCompleted();\n    }\n}\n\n// --- Python (grpcio) ---\nclass Greeter(helloworld_pb2_grpc.GreeterServicer):\n    def SayHello(self, request, context):\n        return helloworld_pb2.HelloReply(message='Hello, %s!' % request.name)\n\ndef serve():\n    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))\n    helloworld_pb2_grpc.add_GreeterServicer_to_server(Greeter(), server)\n    server.add_insecure_port('[::]:50051')\n    server.start()\n    server.wait_for_termination()"
+              },
+              {
+                "title": "WebSocket Scaling Backplane (Python / FastAPI)",
+                "description": "When placing FastAPI WebSockets behind a load balancer, you must use a backplane like Redis Pub/Sub to broadcast messages across all active pods/workers.",
+                "code": "# Python FastAPI with Redis Pub/Sub Broadcasting\n@app.websocket(\"/ws/{client_id}\")\nasync def websocket_endpoint(websocket: WebSocket, client_id: str):\n    await websocket.accept()\n    pubsub = redis.pubsub()\n    await pubsub.subscribe(\"global_chat\")\n    \n    async def reader(ws: WebSocket):\n        async for message in pubsub.listen():\n            if message[\"type\"] == \"message\":\n                await ws.send_text(message[\"data\"])\n                \n    # Run reader task concurrently\n    asyncio.create_task(reader(websocket))\n    \n    try:\n        while True:\n            data = await websocket.receive_text()\n            # Broadcast to all pods via Redis\n            await redis.publish(\"global_chat\", f\"{client_id}: {data}\")\n    except WebSocketDisconnect:\n        await pubsub.unsubscribe(\"global_chat\")"
+              }
             ]
           },
           "tradeoffs": {
@@ -1223,9 +1408,19 @@
       ],
       "summary": "How load balancers distribute traffic, proxy types (forward/reverse), CDN architecture, and LB algorithms with internals.",
       "explanation": {
-        "overview": "Load balancers distribute incoming traffic across multiple servers to ensure no single server becomes a bottleneck. They are the gateway to horizontal scaling — without a load balancer, you can't have multiple application servers. They also provide health checking, SSL termination, and failure isolation.",
+        "overview": "Load balancers distribute incoming traffic across multiple servers to ensure no single server becomes a bottleneck. They are the gateway to horizontal scaling — without a load balancer, you can't have multiple application servers. They also provide health checking, SSL termination, and failure isolation. DEVELOPER BLOG INSIGHT: 'Load balancers are the invisible traffic cops of the internet, but misconfigure them and they become your biggest single point of failure.'",
         "how_it_works_internally": "A load balancer sits between clients and servers. The client connects to the LB's virtual IP (VIP). The LB selects a backend server using a configured algorithm, forwards the request, receives the response, and returns it to the client. The client never knows which backend server handled its request. Modern LBs operate at two layers: L4 (transport — routes based on IP/port, fast, no request inspection) and L7 (application — routes based on HTTP headers, URL path, cookies, slower but smarter)."
       },
+      "limitations": [
+        "Single Point of Failure (SPOF): If your load balancer dies, your cluster of 1,000 backend servers becomes unreachable. LBs must be deployed in Active-Passive pairs with heartbeat mechanisms (like Keepalived/VRRP) to failover virtual IPs.",
+        "Sticky Sessions vs Scaling: Relying on session state (sticky sessions) forces a user to always hit the same backend server. If that server receives heavy users, it becomes overloaded while others sit idle. (Fix: Store session state in Redis instead).",
+        "Cost and Latency: Hardware LBs are incredibly expensive. Adding any LB adds a network hop, slightly increasing latency."
+      ],
+      "common_mistakes": [
+        "Configuring a timeout on the load balancer that is shorter than the application's maximum request timeout (causes premature 504 Gateway Timeouts).",
+        "Blindly using Round-Robin when backend servers have drastically different hardware profiles (Result: cheap servers get overloaded, expensive servers sit idle).",
+        "Failing to implement 'Deep Health Checks'. A server might return 200 OK for a shallow /health check, but its database connection pool is exhausted."
+      ],
       "children": [
         {
           "id": "ch04.s01",
@@ -1253,6 +1448,17 @@
               {
                 "term": "Global Server Load Balancer (GSLB)",
                 "definition": "Distributes traffic across multiple datacenters/regions. Typically DNS-based: health-checks all regions, returns IP of the healthiest/closest region. AWS Route 53 with latency-based routing, Cloudflare DNS load balancing. This is the first hop — then regional LBs distribute within each datacenter."
+              },
+              {
+                "term": "Client-Side Load Balancing",
+                "definition": "Instead of a centralized proxy (like Nginx), the client itself holds a list of backend servers and decides which one to call. This eliminates the extra network hop to a centralized LB and removes a SPOF. Found heavily in microservices (gRPC, Spring Cloud). The client polls a Service Registry (like Eureka or Consul) to get the live IPs."
+              }
+            ],
+            "examples": [
+              {
+                "title": "Client-Side Load Balancing (Java Spring & gRPC Python)",
+                "description": "Developer blogs heavily recommend Client-Side load balancing for internal microservice-to-microservice calls to avoid network hops. Spring uses `Spring Cloud LoadBalancer` (formerly Netflix Ribbon). gRPC uses built-in name resolvers.",
+                "code": "// --- Java: Spring Cloud LoadBalancer ---\n@LoadBalanced // This single annotation injects a client-side LB interceptor\n@Bean\npublic RestTemplate restTemplate() {\n    return new RestTemplate();\n}\n// Usage: URL is the service name, not an IP. Client picks the real IP locally.\nrestTemplate.getForObject(\"http://ORDER-SERVICE/orders/1\", String.class);\n\n# --- Python: gRPC Client-Side Round Robin ---\n# gRPC natively supports client-side load balancing via DNS or custom resolvers\nimport grpc\n# Connect to a headless service (DNS returns multiple A records)\nchannel = grpc.insecure_channel(\n    'dns:///my-service:50051',\n    options=[('grpc.lb_policy_name', 'round_robin')] # Built-in LB policy\n)\nstub = helloworld_pb2_grpc.GreeterStub(channel)"
               }
             ]
           },
@@ -1427,6 +1633,16 @@
         "overview": "The database is the most critical component in system design — it persists your data and its characteristics (consistency, throughput, query model) constrain your entire architecture. Every system design interview involves choosing a database, and the best candidates explain WHY based on access patterns, consistency needs, and scale.",
         "how_it_works_internally": "Databases solve two problems: (1) store data durably (survive restarts and crashes), and (2) retrieve data efficiently (answer queries fast). These goals are in tension — storing data optimally for writes (sequential append) differs from optimal read storage (sorted, indexed). The two main storage engine families (B-Tree and LSM-Tree) represent different trade-off points."
       },
+      "limitations": [
+        "SQL Scalability Walls: Relational queries (JOINs) require data to live on the same physical server. Once you exceed the largest vertical instance (e.g., 24TB RAM), horizontal sharding becomes mandatory, destroying cross-shard ACID guarantees and heavily complicating application logic.",
+        "NoSQL Consistency Risks: Building financial ledgers on eventually consistent databases (BASE properties) risks race conditions, duplicate spend, and phantom reads. You push consistency logic into the microservice layer, which is error-prone.",
+        "Connection Pool Exhaustion: Each database connection consumes memory (5-10MB in Postgres). Thousands of microservices making direct connections can quickly OOM the database server. A dedicated proxy (PgBouncer, ProxySQL) is essentially required at scale."
+      ],
+      "common_mistakes": [
+        "Setting the connection pool maximum size too high. Common belief: 'more connections = more throughput.' Reality: context switching kills the CPU. The optimal pool size is roughly `((core_count * 2) + effective_spindle_count)`.",
+        "Leaking connections by opening a connection, executing a transaction, hitting an unhandled exception, and failing to return the connection to the pool.",
+        "Defaulting to a NoSQL database 'just in case we need to scale' without realizing the heavy cost of lost relational integrity and JOINs."
+      ],
       "children": [
         {
           "id": "ch05.s01",
@@ -1456,6 +1672,13 @@
               {
                 "term": "PostgreSQL Specifics",
                 "definition": "MVCC implementation: every row has xmin (creating transaction ID) and xmax (deleting transaction ID). A transaction sees a row if xmin < its_snapshot AND (xmax is null OR xmax > its_snapshot). UPDATE creates a new row version (new xmin) and marks old version (xmax = current_txid). VACUUM reclaims dead rows. TOAST: large values (>2 KB) are compressed and stored in a separate TOAST table. The main table stores a pointer. This keeps main table rows small for fast sequential scans. Connection model: one OS process per client connection (unlike MySQL's thread-per-connection). Overhead: ~10 MB per connection. For 10,000 connections: 100 GB just for connection overhead. FIX: use PgBouncer (connection pooler) — 10,000 client connections mapped to 100 database connections."
+              }
+            ],
+            "examples": [
+              {
+                "title": "Connection Pooling (Java HikariCP vs Python SQLAlchemy)",
+                "description": "Developer blogs stress that optimizing connection pools is critical to application stability. HikariCP is the gold standard in Java; SQLAlchemy provides built-in queuing in Python. The key config is setting a hard `maximumPoolSize` to prevent overwhelming the DB.",
+                "code": "// --- Java: HikariCP (Spring Boot Default) ---\nHikariConfig config = new HikariConfig();\nconfig.setJdbcUrl(\"jdbc:postgresql://db:5432/mydb\");\nconfig.setUsername(\"user\");\nconfig.setPassword(\"pass\");\n// CRITICAL: Pool size should be surprisingly small! (core_count * 2) + disks\nconfig.setMaximumPoolSize(10);\n// Prevent stale connections being kept alive forever\nconfig.setMaxLifetime(1800000); // 30 mins\nHikariDataSource ds = new HikariDataSource(config);\n\n# --- Python: SQLAlchemy ---\nfrom sqlalchemy import create_engine\n# queue_pool is default. pool_size=10, max_overflow=5 means up to 15 connections max.\nengine = create_engine(\n    \"postgresql://user:pass@db:5432/mydb\",\n    pool_size=10,\n    max_overflow=5,\n    pool_timeout=30,\n    pool_pre_ping=True  # Pings the DB before checking out connection (prevents stale disconnects)\n)"
               }
             ]
           },
