@@ -1,0 +1,241 @@
+{
+    "id": "ch08",
+    "title": "Sharding, Partitioning & Consistent Hashing",
+    "parent_id": null,
+    "order": 8,
+    "tags": [
+        "sharding",
+        "partitioning",
+        "consistent-hashing",
+        "replication",
+        "CDC"
+    ],
+    "summary": "How to split data across multiple machines — sharding strategies, consistent hashing internals with virtual nodes, replication topologies, and data rebalancing.",
+    "explanation": {
+        "overview": "When a single database can no longer handle the load (data volume, write throughput, or read QPS), you must split (shard/partition) the data across multiple databases. Each shard holds a subset of the data. The challenge: how to split evenly, how to route requests to the correct shard, and what happens when you add/remove shards.",
+        "how_it_works_internally": "Every request must be routed to the correct shard. A routing function maps a key (user_id, order_id) to a shard. The simplest function is modulo: shard = hash(key) % N. But this breaks badly when N changes — adding 1 shard remaps nearly all keys. Consistent hashing solves this elegantly."
+    },
+    "children": [
+        {
+            "id": "ch08.s01",
+            "title": "Sharding Strategies",
+            "parent_id": "ch08",
+            "order": 1,
+            "tags": [
+                "range-sharding",
+                "hash-sharding",
+                "directory-sharding",
+                "geo-sharding"
+            ],
+            "summary": "Four approaches to deciding which data goes to which shard.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Range-Based Sharding",
+                        "definition": "Assign key ranges to shards: Shard A = users 0-999,999. Shard B = users 1,000,000-1,999,999. PROS: efficient range queries (all user 500,000's data on one shard). Simple to understand and implement. CONS: hot spots — if user 0-999,999 are early adopters who are more active, Shard A gets disproportionate load. New users all go to the latest shard, creating a write hotspot. WHEN TO USE: time-series data (partition by date range — each month on a separate shard), alphabetical partitioning (surnames A-M, N-Z)."
+                    },
+                    {
+                        "term": "Hash-Based Sharding",
+                        "definition": "shard = hash(key) % num_shards. Distributes data uniformly (assuming a good hash function). PROS: even distribution (no hotspots from key distribution). CONS: range queries are expensive (must query ALL shards and merge results). Adding/removing shards remaps ~all keys — requires massive data migration. WHEN TO USE: even write distribution is the priority, access patterns are key-based (not range-based)."
+                    },
+                    {
+                        "term": "Directory-Based Sharding",
+                        "definition": "A lookup table (directory) maps each key to its shard. key_id → shard_id stored in a fast lookup service (Redis, ZooKeeper). PROS: maximum flexibility — can move any key to any shard independently. CONS: directory is a single point of failure. Every request must query the directory first (adds latency). WHEN TO USE: when you need fine-grained control over data placement (GDPR — keep EU user data in EU shards)."
+                    },
+                    {
+                        "term": "Geo-Based Sharding",
+                        "definition": "Shard by geographic region: US users on US-West shard, EU users on EU-Frankfurt shard. Data locality: users are served by the nearest shard, minimizing latency. USED BY: Uber (geo-sharded by city), Spanner (region-based placement). CHALLENGE: users who travel across regions."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch08.s02",
+            "title": "Consistent Hashing — Deep Dive Internals",
+            "parent_id": "ch08",
+            "order": 2,
+            "tags": [
+                "consistent-hashing",
+                "hash-ring",
+                "virtual-nodes",
+                "vNodes"
+            ],
+            "summary": "How consistent hashing minimizes data movement when nodes are added/removed — the hash ring, virtual nodes, and real-world implementations.",
+            "explanation": {
+                "overview": "Consistent hashing solves the fundamental problem with modulo hashing: when you change the number of servers, modulo remaps almost every key. Consistent hashing guarantees that adding/removing a server only moves K/N keys on average (K = total keys, N = total servers).",
+                "how_it_works_internally": "THE HASH RING: Imagine a circular number line from 0 to 2^32 - 1. Both server nodes and keys are hashed onto this ring using the same hash function (MD5, SHA-256, or MurmurHash). Each server occupies a position: hash(server_ip) → position on ring. Each key occupies a position: hash(key) → position on ring. A key is assigned to the FIRST server encountered when walking CLOCKWISE from the key's position. ADDING A NODE: new node N lands between existing nodes A and B. Only keys between A and N (that previously mapped to B) now map to N. All other keys are unaffected. On average, only K/N keys move. REMOVING A NODE: keys that were assigned to the removed node now walk clockwise to the next node. Only that node's keys are affected.",
+                "key_concepts": [
+                    {
+                        "term": "Problem: Non-Uniform Distribution",
+                        "definition": "With few physical nodes (3-5), the hash ring has large gaps. One node may own 60% of the ring while another owns 10%. SOLUTION: Virtual Nodes (vNodes) — each physical node creates K virtual nodes on the ring. Instead of hashing just the server IP, hash server_ip + '_0', server_ip + '_1', ..., server_ip + '_K'. With K=150, each physical node has 150 positions spread across the ring. The ring looks uniform even with few physical nodes. Cassandra uses 128-256 vNodes by default. MORE vNODES: finer granularity, more uniform distribution. FEWER: less metadata overhead. ADDED BENEFIT: when a physical node fails, its K virtual nodes' keys are distributed across K different successor nodes (instead of all going to one successor). This prevents cascading overload."
+                    },
+                    {
+                        "term": "Weighted Nodes",
+                        "definition": "Assign more virtual nodes to powerful servers. A server with 32 GB RAM gets 200 vNodes. A server with 16 GB RAM gets 100 vNodes. This ensures the more powerful server handles proportionally more data."
+                    },
+                    {
+                        "term": "Hash Function Selection",
+                        "definition": "The hash function must distribute uniformly and be fast. Common choices: MD5 (128-bit, good distribution, slower), MurmurHash3 (128-bit, excellent distribution, very fast — used by Cassandra), xxHash (fastest, used by many modern systems). DO NOT use cryptographic hashes (SHA-256) for consistent hashing — they're unnecessarily slow. Cryptographic properties aren't needed here, only uniform distribution."
+                    },
+                    {
+                        "term": "Real-World Implementations",
+                        "definition": "Cassandra: consistent hashing with vNodes (num_tokens, default 256). Each node owns tokens on the ring. DynamoDB: consistent hashing with partition key. Redis Cluster: 16384 hash slots (variant of consistent hashing — fixed slots, nodes own slot ranges). Amazon S3: partition keys hashed to distribute objects across storage nodes. Content-addressable storage: hash(content) → store on the corresponding node (dedup-friendly)."
+                    }
+                ]
+            },
+            "diagram": {
+                "type": "excalidraw",
+                "title": "Consistent Hashing Ring with Virtual Nodes",
+                "description": "A circular ring showing 3 physical nodes (A, B, C) each with 3 virtual nodes spread across the ring. Keys are placed on the ring and assigned to the next clockwise node.",
+                "data": {
+                    "type": "excalidraw",
+                    "version": 2,
+                    "elements": [
+                        {
+                            "type": "ellipse",
+                            "x": 100,
+                            "y": 100,
+                            "width": 300,
+                            "height": 300,
+                            "backgroundColor": "transparent",
+                            "strokeColor": "#1971c2",
+                            "label": "Hash Ring [0, 2^32)"
+                        },
+                        {
+                            "type": "text",
+                            "x": 250,
+                            "y": 80,
+                            "text": "A1"
+                        },
+                        {
+                            "type": "text",
+                            "x": 380,
+                            "y": 180,
+                            "text": "B2"
+                        },
+                        {
+                            "type": "text",
+                            "x": 350,
+                            "y": 340,
+                            "text": "C1"
+                        },
+                        {
+                            "type": "text",
+                            "x": 150,
+                            "y": 370,
+                            "text": "A2"
+                        },
+                        {
+                            "type": "text",
+                            "x": 80,
+                            "y": 250,
+                            "text": "B1"
+                        },
+                        {
+                            "type": "text",
+                            "x": 130,
+                            "y": 130,
+                            "text": "C2"
+                        },
+                        {
+                            "type": "text",
+                            "x": 300,
+                            "y": 120,
+                            "text": "key1 → A1"
+                        },
+                        {
+                            "type": "text",
+                            "x": 380,
+                            "y": 280,
+                            "text": "key2 → C1"
+                        }
+                    ]
+                }
+            },
+            "children": []
+        },
+        {
+            "id": "ch08.s03",
+            "title": "Replication Topologies",
+            "parent_id": "ch08",
+            "order": 3,
+            "tags": [
+                "replication",
+                "leader-follower",
+                "multi-leader",
+                "leaderless",
+                "CDC"
+            ],
+            "summary": "How data is copied across nodes for fault tolerance and read scalability.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Single-Leader (Master-Slave)",
+                        "definition": "One node (leader/primary) accepts all writes. Changes are replicated to follower nodes (read replicas). Followers handle read queries to distribute read load. INTERNAL: leader writes to WAL → streams WAL records to followers → followers replay WAL. Sync replication: leader waits for at least 1 follower ACK before confirming write (slower, more durable). Async replication: leader confirms immediately, streams later (faster, risk of data loss if leader crashes before replication). PROS: simple, strong consistency from leader, read scalability. CONS: leader is a write bottleneck, failover complexity (picking a new leader, handling divergent state). TOOLS: Postgres streaming replication, MySQL replication, MongoDB replica sets. FAILOVER: Postgres with Patroni — automatic leader election using etcd or ZooKeeper. If leader dies, Patroni promotes the most up-to-date replica. AWS RDS Multi-AZ: synchronous standby in another AZ with automatic failover in ~30 seconds."
+                    },
+                    {
+                        "term": "Multi-Leader (Multi-Master)",
+                        "definition": "Multiple nodes accept writes. Each leader replicates to all others asynchronously. ADVANTAGE: writes accepted in any region (low latency for global users). CHALLENGE: write conflicts — two leaders modify the same row simultaneously. Conflict resolution strategies: (1) Last-Write-Wins (LWW) — highest timestamp wins (risk: clock skew loses writes). (2) Application-level — merge function (Git-like merge, CRDTs). (3) Conflict avoidance — route all writes for a given user to one leader (effectively single-leader per user). USED BY: Google Docs (OT/CRDT), CouchDB (conflict resolution with revision trees), active-active database setups."
+                    },
+                    {
+                        "term": "Leaderless (Dynamo-style)",
+                        "definition": "No designated leader. Any node accepts reads AND writes. Client writes to W nodes simultaneously. Client reads from R nodes and takes the most recent value (by timestamp or version vector). W + R > N guarantees overlap: at least one read node has the latest write (quorum). EXAMPLE: N=3, W=2, R=2. Write goes to 2 of 3 nodes. Read from 2 of 3 nodes. At least 1 overlap → guaranteed to read latest. If W=1, R=3: fast writes (fire-and-forget to 1), slow reads (must read all 3). If W=3, R=1: slow writes (all must ACK), fast reads. TUNABLE PER QUERY: Cassandra's CONSISTENCY LEVEL can be set per query (ONE, QUORUM, ALL). Read repair: if a read finds stale values on some nodes, the coordinator sends the latest value to those nodes. Anti-entropy: background Merkle tree comparison to find and fix inconsistencies. USED BY: Cassandra, DynamoDB, Riak."
+                    },
+                    {
+                        "term": "Change Data Capture (CDC)",
+                        "definition": "Capture every change in the database (INSERT/UPDATE/DELETE) and stream it as events to downstream systems. The database's WAL/binlog is treated as an event stream. Tools: Debezium (reads Postgres WAL, MySQL binlog, MongoDB oplog → publishes to Kafka). USE CASES: keep cache in sync (CDC → consumer → cache invalidation), build search index (CDC → consumer → Elasticsearch update), event sourcing from a relational DB, data warehouse sync (CDC → Kafka → ETL → data warehouse)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch08.s04",
+            "title": "Sharding Challenges",
+            "parent_id": "ch08",
+            "order": 4,
+            "tags": [
+                "cross-shard",
+                "rebalancing",
+                "hotspot"
+            ],
+            "summary": "The hard problems that arise from sharded architectures.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Cross-Shard Queries / JOINs",
+                        "definition": "If user data is on Shard A and their orders on Shard B, a JOIN requires fetching from both shards at the application layer. Solutions: (1) Co-locate related data on the same shard (shard everything by user_id). (2) Denormalize — store the user's name in the order record. (3) Use a scatter-gather pattern — query all shards in parallel, merge results. TRADE-OFF: denormalization increases storage and update complexity but eliminates cross-shard queries."
+                    },
+                    {
+                        "term": "Hot Partitions / Hotspots",
+                        "definition": "One shard receives disproportionate traffic. Even with hash sharding, highly active keys (celebrity user, viral product) create hotspots. Solutions: (1) Add a random suffix to split hot keys: user_123 → user_123_0, user_123_1, ..., user_123_9 (10 sub-shards). Reads must query all 10 and merge. (2) Dedicated shard for known hot keys. (3) Application-level caching to absorb reads. Instagram's approach: detect hot partitions via monitoring, automatically split them."
+                    },
+                    {
+                        "term": "Rebalancing",
+                        "definition": "When adding new shards, data must be redistributed. Consistent hashing minimizes movement (only K/N keys move). During rebalancing: both old and new locations may have the data — use versioning or routing rules to handle requests during migration. AUTOMATION: Cassandra does this automatically when a node joins (bootstrapping). DynamoDB handles it transparently. Manual sharding (e.g., Postgres + application routing) requires custom migration scripts."
+                    },
+                    {
+                        "term": "Distributed Transactions Across Shards",
+                        "definition": "A single business operation spanning multiple shards can't use a local transaction. Options: 2PC (blocking, coordinator SPOF — avoid), Saga pattern (compensating transactions), eventual consistency with reconciliation jobs. INDUSTRY STANDARD: design your shard key so that transactions stay within a single shard (shard by user_id, and user operations only touch one shard)."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Designing Data-Intensive Applications (Ch. 5-6) — Martin Kleppmann",
+            "url": "https://dataintensive.net/"
+        },
+        {
+            "title": "Consistent Hashing Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Consistent_hashing"
+        },
+        {
+            "title": "Debezium — CDC Tool",
+            "url": "https://debezium.io/"
+        }
+    ]
+}

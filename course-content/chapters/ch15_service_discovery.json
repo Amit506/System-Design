@@ -1,0 +1,127 @@
+{
+    "id": "ch15",
+    "title": "Service Discovery, Containers & Orchestration",
+    "parent_id": null,
+    "order": 15,
+    "tags": [
+        "kubernetes",
+        "docker",
+        "service-discovery",
+        "containers",
+        "service-mesh",
+        "istio"
+    ],
+    "summary": "Container internals (namespaces, cgroups), Kubernetes architecture (kube-apiserver, etcd, kubelet, scheduler), service discovery mechanisms, and service mesh (Istio/Envoy).",
+    "explanation": {
+        "overview": "Modern distributed systems run as containers orchestrated by Kubernetes. Understanding how containers work internally, how Kubernetes schedules and manages them, and how services find each other (service discovery) is essential for designing real production systems."
+    },
+    "children": [
+        {
+            "id": "ch15.s01",
+            "title": "Docker & Container Internals",
+            "parent_id": "ch15",
+            "order": 1,
+            "tags": [
+                "docker",
+                "namespaces",
+                "cgroups",
+                "OCI",
+                "layers"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "What is a Container?",
+                        "definition": "A container is NOT a lightweight VM. It's a regular Linux process isolated using two kernel features: (1) Namespaces: isolate what the process can SEE. PID namespace: process sees only its own processes (PID 1 inside container). Network namespace: process gets its own network stack (virtual NIC, IP, port space). Mount namespace: process has its own filesystem view. User namespace: UID 0 inside container ≠ UID 0 on host (rootless containers). (2) cgroups (Control Groups): limit what the process can USE. CPU: cpu.max (e.g., 200000 100000 = 2 CPU cores). Memory: memory.max (512 MB hard limit — exceeded = OOM kill). I/O: io.max (bandwidth and IOPS limits). Together: the process thinks it has its own isolated machine, but it's actually sharing the host kernel."
+                    },
+                    {
+                        "term": "Docker Image Layers",
+                        "definition": "A Docker image is a stack of read-only layers. Each Dockerfile instruction (FROM, RUN, COPY) creates a new layer. Layers are cached and shared between images. A running container adds a writable layer on top (Copy-on-Write — when a file from a read-only layer is modified, it's copied to the writable layer). UNION FILESYSTEM: overlay2 (Linux default) stacks layers into a single coherent filesystem. IMAGE SIZE OPTIMIZATION: use multi-stage builds (build in a large image, copy binary to a tiny alpine image). Minimize layers (combine RUN commands). Use .dockerignore. Base image matters: node:18 (900 MB) vs node:18-alpine (100 MB)."
+                    },
+                    {
+                        "term": "container vs VM",
+                        "definition": "VM: runs a full guest OS on a hypervisor. Each VM has its own kernel — complete isolation. Boot time: 30-60 seconds. Overhead: 200-500 MB per VM. Container: shares the host kernel. Isolation via namespaces/cgroups — lighter but less isolated than VMs. Boot time: < 1 second. Overhead: < 10 MB. Trade-off: VMs for multi-tenant isolation (cloud providers isolate customers with VMs). Containers for microservice deployment (same trust boundary, shared kernel). AWS Firecracker: micro-VMs — VM-level isolation with container-like speed (boot in 125ms). Used by AWS Lambda and Fargate."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch15.s02",
+            "title": "Kubernetes Architecture — Deep Dive",
+            "parent_id": "ch15",
+            "order": 2,
+            "tags": [
+                "kubernetes",
+                "kube-apiserver",
+                "etcd",
+                "kubelet",
+                "scheduler"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Control Plane Components",
+                        "definition": "kube-apiserver: REST API server (the front door to K8s). All commands (kubectl, CI/CD, controllers) go through the API server. Validates requests, persists state to etcd, and notifies controllers. etcd: distributed key-value store (Raft consensus). Stores ALL cluster state: pods, services, config maps, secrets. The single source of truth. kube-scheduler: watches for unscheduled pods, selects the best node based on: resource requests (CPU, memory), affinity/anti-affinity rules, taints/tolerations, topology spread constraints. Scheduling is a 2-phase process: filtering (eliminate unsuitable nodes) → scoring (rank remaining nodes). kube-controller-manager: runs control loops (reconciliation loops). Deployment controller: ensures desired replica count. ReplicaSet controller: creates/deletes pods to match desired count. Service controller: manages cloud load balancers. cloud-controller-manager: integrates with cloud APIs (AWS, GCP) for load balancers, volumes, routes."
+                    },
+                    {
+                        "term": "Node Components",
+                        "definition": "kubelet: agent on each node. Watches the API server for pods assigned to its node, ensures containers are running (pulls images, starts containers, monitors health, reports status back to API server). Restarts containers on failure. kube-proxy: maintains network rules on each node. Implements Service (ClusterIP, NodePort, LoadBalancer) by programming iptables or IPVS rules. When you create a Service, kube-proxy updates iptables on every node so that traffic to the Service's virtual IP is forwarded to one of the backend pod IPs. Container Runtime: actually runs containers. containerd (Docker's runtime, now standalone), CRI-O (lightweight K8s-focused runtime). K8s talks to runtime via CRI (Container Runtime Interface)."
+                    },
+                    {
+                        "term": "Pod",
+                        "definition": "the smallest deployable unit. One or more co-located containers sharing the same network namespace (same IP, same port space, can communicate via localhost) and storage volumes. WHY multiple containers? Sidecar pattern: main app container + log collector sidecar + Envoy proxy sidecar. LIFECYCLE: Pending → Running → Succeeded/Failed. Init containers run first (database migrations, config fetching). Probes: livenessProbe (is container alive? If not, restart it), readinessProbe (is container ready to serve traffic? If not, remove from Service endpoints), startupProbe (for slow-starting apps, prevents liveness from killing during startup)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch15.s03",
+            "title": "Service Discovery",
+            "parent_id": "ch15",
+            "order": 3,
+            "tags": [
+                "service-discovery",
+                "DNS",
+                "client-side",
+                "server-side"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "DNS-Based (Kubernetes)",
+                        "definition": "In Kubernetes, every Service gets a DNS name: my-service.my-namespace.svc.cluster.local. CoreDNS (runs as a pod) resolves this to the Service's ClusterIP. kube-proxy routes ClusterIP to backend pod IPs. Zero application change needed — just use the DNS name. HEADLESS SERVICE (clusterIP: None): returns pod IPs directly instead of a ClusterIP. Used when you need to connect to specific pods (stateful workloads like Cassandra — each pod has a unique identity)."
+                    },
+                    {
+                        "term": "Client-Side Discovery",
+                        "definition": "The client queries a service registry (Consul, Eureka, etcd) to get a list of available service instances, then load-balances among them. Client decides which instance to call. PROS: no single-point-of-failure load balancer, client can use smart routing (same-zone affinity). CONS: client must implement discovery logic for every language. Netflix Eureka + Ribbon (Java) was the canonical example."
+                    },
+                    {
+                        "term": "Server-Side Discovery",
+                        "definition": "The client sends requests to a load balancer/reverse proxy, which queries the service registry and routes to a healthy instance. Client only knows the LB address. PROS: client is simple. CONS: LB is a potential bottleneck/SPOF. This is the Kubernetes model (kube-proxy acts as the server-side discovery)."
+                    },
+                    {
+                        "term": "Service Mesh (Istio/Envoy)",
+                        "definition": "Deploy a sidecar proxy (Envoy) alongside every service pod. All network traffic goes through the sidecar. The mesh provides: mTLS (automatic encryption between services), traffic management (canary deployments — route 5% to v2, 95% to v1), observability (distributed tracing, request metrics per service-pair), circuit breaking, retries, timeout — ALL without changing application code. CONTROL PLANE (Istiod): configures all sidecar proxies centrally. Creates routing rules, distributes certificates, collects telemetry. DATA PLANE: Envoy sidecars intercept all traffic. OVERHEAD: ~2-5ms latency per hop, ~50 MB memory per sidecar. WHEN TO USE: large microservice architectures (>20 services) where cross-cutting concerns (security, observability, traffic management) are too complex to implement in each service."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Kubernetes Official Documentation",
+            "url": "https://kubernetes.io/docs/"
+        },
+        {
+            "title": "Docker Documentation",
+            "url": "https://docs.docker.com/"
+        },
+        {
+            "title": "Istio Documentation",
+            "url": "https://istio.io/latest/docs/"
+        }
+    ]
+}

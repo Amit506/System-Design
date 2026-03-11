@@ -1,0 +1,718 @@
+{
+    "id": "ch07",
+    "title": "Caching",
+    "parent_id": null,
+    "order": 7,
+    "tags": [
+        "caching",
+        "redis",
+        "memcached",
+        "performance",
+        "latency"
+    ],
+    "summary": "Complete guide to caching — cache layers, write policies, eviction strategies, Redis internals (single-threaded event loop, data structures, persistence), common problems (stampede, hot keys, consistency), and industry-standard solutions.",
+    "explanation": {
+        "overview": "Caching is the technique of storing frequently accessed data in a fast-access layer (usually RAM) to reduce latency and load on the primary data source. It's one of the most impactful system design tools — a Redis cache can serve 100K+ ops/sec with sub-millisecond latency vs ~10ms for a typical database query. Almost every system design interview involves caching in some form.",
+        "how_it_works_internally": "At its simplest: before querying the database, check if the data exists in cache. If yes (cache hit), return immediately (~0.5ms). If no (cache miss), query the database (~5-50ms), store the result in cache for future requests, then return. The key decisions are: what to cache, where to cache, how long to cache (TTL), how to keep cache consistent with the source, and what to evict when cache is full."
+    },
+    "children": [
+        {
+            "id": "ch07.s01",
+            "title": "Cache Layers — Where to Cache",
+            "parent_id": "ch07",
+            "order": 1,
+            "tags": [
+                "cache-layers",
+                "CDN",
+                "client-cache",
+                "distributed-cache"
+            ],
+            "summary": "Caching can happen at multiple layers, each with different trade-offs in latency, consistency, and complexity.",
+            "explanation": {
+                "overview": "In a typical request flow, data passes through several layers. You can cache at ANY of these layers — often at multiple simultaneously. Each layer trades off closeness-to-user (lower latency) vs closeness-to-source (higher consistency).",
+                "key_concepts": [
+                    {
+                        "term": "Client-Side Cache (Browser/App Cache)",
+                        "definition": "Cache data directly in the user's browser or mobile app. Implementation: HTTP Cache-Control headers (max-age, ETag, If-None-Match). The browser stores responses locally and serves them without network requests until TTL expires. Latency: 0ms (no network). Consistency: poor — stale until TTL expires or user clears cache. Use for: static assets (JS/CSS/images), user preferences, config. Industry tweak: use versioned URLs (bundle.a3f8b2.js) so you can set max-age=31536000 (1 year) for immutable assets — new deploys generate new filenames. Edge case: mobile apps need cache invalidation strategies since users don't 'clear cache' on mobile — use ETag + conditional requests."
+                    },
+                    {
+                        "term": "CDN Cache (Edge Cache)",
+                        "definition": "Cache content at geographically distributed edge servers (Points of Presence). Providers: Cloudflare (300+ PoPs), AWS CloudFront, Akamai, Fastly. How it works: user's DNS resolves to nearest PoP → PoP checks its cache → on miss, fetches from origin and caches. Latency: ~5-30ms (user to nearest PoP) vs ~100-300ms (user to origin across continents). Consistency: controlled by Cache-Control headers from origin. Use for: static assets, API responses for read-heavy public data (product pages, search results, feeds). Industry tweak: CDN can cache personalized content too — use Vary header with Accept-Encoding, or edge-side includes (ESI) to compose pages from cached fragments plus small personalized portions. Configurable: TTL per content type (images: 24h, API: 60s, HTML: 5min). Edge case: cache invalidation — use purge APIs or versioned URLs. Stale-while-revalidate directive: serve stale content while fetching fresh in background."
+                    },
+                    {
+                        "term": "API Gateway / Reverse Proxy Cache",
+                        "definition": "NGINX, Envoy, Varnish, or API Gateway (Kong, AWS API GW) can cache API responses. How it works: hash(method + URL + selected headers) → check cache → serve if hit. Latency: <1ms (in-memory on the proxy server). Use for: repeated identical requests (GET /api/products/123), rate-limited API responses, GraphQL query caching. Industry tweak: Varnish uses VCL (Varnish Configuration Language) to write custom cache rules — e.g., cache only GET requests where response status is 200, vary by Authorization header for per-user caching."
+                    },
+                    {
+                        "term": "Application-Level Cache (In-Process)",
+                        "definition": "Local cache within the application process (JVM heap, Python dict, Go map). Libraries: Guava Cache (Java), functools.lru_cache (Python), node-cache (Node.js). Latency: <0.1ms (direct memory access, no network). Consistency: only consistent within that single process instance. If you have 20 app servers, each has its own local cache → 20 potentially different versions of the same data. Use for: config/feature flags (rarely changing), parsed templates, DB connection pool objects, frequently used lookups (country code → name). Industry tweak: use as a first-level (L1) cache in front of Redis (L2). On miss in L1, check L2 (Redis, ~0.5ms). On miss in L2, hit DB (~10ms). Populate both on DB fetch. This reduces Redis load by 10-50× for hot keys. Edge case: cache coordination — when config changes, you must invalidate across all instances. Use pub/sub (Redis PUBLISH) or polling with short TTL (5-10 seconds)."
+                    },
+                    {
+                        "term": "Distributed Cache (External)",
+                        "definition": "Shared cache accessible by all application servers. Tools: Redis, Memcached. Runs as a separate service (or cluster). Latency: ~0.5-1ms over network (same datacenter). Unlike in-process cache, all app servers see the same cached data → no inconsistency between instances. Capacity: Redis supports up to ~25-100 GB per instance (RAM-limited); Redis Cluster can distribute across many nodes for TB-scale. Use for: session storage, rate limit counters, leaderboards, user feeds, hot database rows, distributed locks. This is the most common 'cache' discussed in system design interviews."
+                    }
+                ]
+            },
+            "diagram": {
+                "type": "excalidraw",
+                "title": "Cache Layers in a Request Flow",
+                "description": "Shows how a request passes through multiple cache layers — browser, CDN, API Gateway, application L1 cache, Redis L2 cache, and finally the database.",
+                "data": {
+                    "type": "excalidraw",
+                    "version": 2,
+                    "elements": [
+                        {
+                            "type": "rectangle",
+                            "x": 50,
+                            "y": 50,
+                            "width": 120,
+                            "height": 50,
+                            "backgroundColor": "#a5d8ff",
+                            "label": "Browser Cache\n0ms"
+                        },
+                        {
+                            "type": "rectangle",
+                            "x": 220,
+                            "y": 50,
+                            "width": 120,
+                            "height": 50,
+                            "backgroundColor": "#b2f2bb",
+                            "label": "CDN Cache\n5-30ms"
+                        },
+                        {
+                            "type": "rectangle",
+                            "x": 390,
+                            "y": 50,
+                            "width": 140,
+                            "height": 50,
+                            "backgroundColor": "#ffec99",
+                            "label": "API GW Cache\n<1ms"
+                        },
+                        {
+                            "type": "rectangle",
+                            "x": 580,
+                            "y": 50,
+                            "width": 140,
+                            "height": 50,
+                            "backgroundColor": "#d0bfff",
+                            "label": "App L1 Cache\n<0.1ms"
+                        },
+                        {
+                            "type": "rectangle",
+                            "x": 50,
+                            "y": 150,
+                            "width": 140,
+                            "height": 50,
+                            "backgroundColor": "#ffc9c9",
+                            "label": "Redis L2 Cache\n0.5-1ms"
+                        },
+                        {
+                            "type": "rectangle",
+                            "x": 250,
+                            "y": 150,
+                            "width": 140,
+                            "height": 50,
+                            "backgroundColor": "#868e96",
+                            "label": "Database\n5-50ms"
+                        }
+                    ]
+                }
+            },
+            "children": []
+        },
+        {
+            "id": "ch07.s02",
+            "title": "Cache Write Policies",
+            "parent_id": "ch07",
+            "order": 2,
+            "tags": [
+                "cache-aside",
+                "write-through",
+                "write-back",
+                "write-behind",
+                "refresh-ahead"
+            ],
+            "summary": "Four cache write strategies — each determines how/when data flows between cache and database, with different consistency and latency trade-offs.",
+            "explanation": {
+                "overview": "When data is written (INSERT/UPDATE/DELETE), you must decide how the cache and database stay in sync. This is the hardest part of caching — get it wrong and you serve stale data or lose writes.",
+                "key_concepts": [
+                    {
+                        "term": "Cache-Aside (Lazy Loading)",
+                        "definition": "The application manages cache and DB independently. READ: app checks cache → on hit, return. On miss → query DB → write result to cache → return. WRITE: app writes to DB → then invalidates (deletes) the cache key (NOT 'updates' — delete is safer because it avoids race conditions). This is the most common strategy in industry. HOW IT WORKS INTERNALLY: On a cache miss, the app does 3 operations: (1) cache.get(key) → null, (2) db.query(key) → data, (3) cache.set(key, data, TTL=300). On a write: (1) db.update(key, new_data), (2) cache.delete(key). The next read will cache-miss and fetch fresh data from DB. WHY DELETE AND NOT UPDATE: If two concurrent writes happen, Write-A and Write-B, both might try to update the cache. If Write-A finishes DB write first but Write-B updates cache first, the cache has stale data from Write-A. Deleting avoids this race — the next read always fetches the latest from DB. EDGE CASE: 'Cache stampede' — if a hot key expires and 1000 concurrent requests all cache-miss simultaneously, all 1000 hit the DB. Solutions: (1) Mutex/singleflight: only the first request fetches from DB while others wait. (2) Probabilistic early expiry: each request has a small random chance of refreshing before TTL expires, spreading the load. (3) Stale-while-revalidate: serve the expired value while one request refreshes in background. CONFIGURABLE: TTL (time-to-live) — shorter = more consistent but more DB load. Longer = faster but more staleness. Start with 5 minutes and adjust."
+                    },
+                    {
+                        "term": "Write-Through",
+                        "definition": "Every write goes to BOTH cache AND database synchronously before returning success to the client. READ: same as cache-aside (check cache, fall back to DB). WRITE: app → cache.set(key, data) → db.write(key, data) → return success. The cache is always consistent with the DB because writes update both atomically. TRADE-OFF: Write latency is higher because you wait for both cache and DB writes (serialized or parallel). Reads are always fast (cache is pre-populated). Use when: read-heavy workloads where consistency matters and you can tolerate slightly slower writes (user profiles, configs). EDGE CASE: What if DB write succeeds but cache write fails? Use a try-catch on cache write — if cache set fails, delete the key (fall back to cache-aside behavior). The next read will re-populate from DB. INDUSTRY TWEAK: Combine write-through with TTL as a safety net — even if cache somehow becomes stale, TTL ensures it refreshes within N seconds."
+                    },
+                    {
+                        "term": "Write-Back (Write-Behind)",
+                        "definition": "Writes go to cache only, and are asynchronously flushed to the database in batches after a delay. READ: always from cache (fastest possible). WRITE: app → cache.set(key, data) → return success immediately. A background worker (or cache system itself) periodically flushes dirty cache entries to DB (every N seconds or after M writes). ADVANTAGE: Extremely low write latency (just cache write, ~0.5ms). Can absorb write spikes without overwhelming the DB. DISADVANTAGE: DATA LOSS RISK — if the cache crashes before flushing to DB, unflushed writes are permanently lost. Not acceptable for financial data, user accounts, or anything where data loss can't be tolerated. Use when: analytics counters (page view counts, like counts), real-time metrics, gaming leaderboards — where losing a few seconds of data is acceptable. HOW IT WORKS INTERNALLY: Maintain a 'dirty set' — keys that have been written to cache but not yet persisted. A timer or threshold triggers: for each key in dirty_set → db.upsert(key, cache.get(key)) → remove from dirty_set. INDUSTRY TWEAK: Redis doesn't natively support write-behind — you implement it at the application layer. Use a Redis Stream or Kafka to buffer writes, then a consumer writes to DB. This adds durability (Kafka persists to disk)."
+                    },
+                    {
+                        "term": "Refresh-Ahead",
+                        "definition": "The cache proactively refreshes entries BEFORE they expire, rather than waiting for a cache miss. HOW IT WORKS: A background thread monitors TTL of cached entries. When TTL drops below a threshold (e.g., 20% remaining life), it asynchronously fetches fresh data from DB and updates the cache — the key never actually expires for active data. ADVANTAGE: Eliminates cache misses for hot keys entirely — users never experience the latency spike of a miss-and-refill. DISADVANTAGE: Complexity — you need to track which keys are 'hot' (worth proactively refreshing) vs 'cold' (let them expire naturally). Refreshing cold keys wastes DB resources. Use when: you have a known set of hot keys (top 100 products, trending topics, celebrity profiles) and the cost of a cache miss is unacceptable (real-time trading, live dashboards). IMPLEMENTATION: Use Redis OBJECT IDLETIME command to check when a key was last accessed. If idle time is short (key is hot) and remaining TTL is < 20%, schedule a refresh."
+                    }
+                ]
+            },
+            "advanced_tweaks": [
+                {
+                    "technique": "Double-delete for cache consistency",
+                    "when_to_use": "When using cache-aside with high-concurrency writes",
+                    "how": "On write: (1) cache.delete(key), (2) db.update(key, new_data), (3) sleep(500ms), (4) cache.delete(key) again. The second delete catches a race condition where a concurrent read re-populated the cache with stale data between your DB write and first delete. The sleep gives the concurrent read time to complete. This technique is used at scale by Facebook and Airbnb."
+                },
+                {
+                    "technique": "Read-through vs Cache-aside",
+                    "when_to_use": "When you want the cache system to handle DB fetching (simplifies app code)",
+                    "how": "In read-through, the cache library (e.g., Caffeine, NCache) is configured with a data loader function. On cache miss, the cache itself calls the loader, populates, and returns. The app never directly queries the DB for cached data. This centralizes caching logic and avoids the 'forgot to cache' bug at the application layer."
+                },
+                {
+                    "technique": "Multi-level caching (L1 + L2)",
+                    "when_to_use": "When Redis network latency (0.5ms) is still too much for ultra-hot paths",
+                    "how": "L1: in-process cache (Guava, ConcurrentHashMap) with short TTL (5-30 seconds, small size ~100MB). L2: Redis/Memcached. On request: check L1 → miss → check L2 → miss → query DB → populate both L1 and L2. The L1 absorbs the hottest traffic without any network call. Invalidation: on write, delete from L2 (Redis), then publish a message on a Redis Pub/Sub channel. All app servers subscribe and clear their L1 for that key. Used by: Twitter, LinkedIn, Netflix."
+                }
+            ],
+            "common_mistakes": [
+                "Caching everything — only cache data that is read-often AND changes infrequently. Caching rapidly changing data means constant invalidation overhead with low hit rates.",
+                "Setting TTL too long (hours/days) for mutable data — causes stale reads. Start with 1-5 minutes for mutable data.",
+                "Not handling cache failures — if Redis goes down and you haven't planned for it, all requests hit the DB simultaneously (thundering herd). Always have a fallback path.",
+                "Caching NULL/empty results — if a cache miss for a non-existent key goes to DB, finds nothing, and caches nothing, a malicious user can exploit this by requesting random non-existent keys to bypass cache and DDoS the DB. Solution: cache the NULL result with a short TTL (30 seconds). This is called 'negative caching'."
+            ],
+            "children": []
+        },
+        {
+            "id": "ch07.s03",
+            "title": "Cache Eviction Policies",
+            "parent_id": "ch07",
+            "order": 3,
+            "tags": [
+                "LRU",
+                "LFU",
+                "TTL",
+                "eviction"
+            ],
+            "summary": "When cache memory is full, eviction policies decide which entries to remove. The choice significantly impacts hit rate.",
+            "explanation": {
+                "overview": "A cache has finite memory. When full and a new entry arrives, you must evict an existing entry. The goal: evict the entry least likely to be requested again, maximizing hit rate.",
+                "key_concepts": [
+                    {
+                        "term": "LRU (Least Recently Used)",
+                        "definition": "Evict the entry that hasn't been accessed for the longest time. Based on the assumption that recently accessed data will be accessed again soon (temporal locality). HOW IT WORKS INTERNALLY: Implemented with a doubly-linked list + hash map. Every access moves the key to the head of the list (O(1) with direct node pointer from hash map). When eviction is needed, remove the tail (O(1)). Lookup, insert, and evict are all O(1). IMPLEMENTATION DETAIL: In Redis, LRU is approximated — Redis doesn't maintain a full linked list (too much memory overhead). Instead, Redis samples N random keys (default N=5, configurable via maxmemory-samples) and evicts the one with the oldest access time. With N=10, the approximation is very close to true LRU. WHEN TO USE: Most general-purpose caching. Works well when access patterns have temporal locality. EDGE CASE: LRU is bad for scanning workloads — if a batch job reads every key once sequentially, it pollutes the cache by evicting hot keys to make room for keys that will never be accessed again. FIX: Redis LFU mode (see below) or a separate scan-resistant cache for batch operations."
+                    },
+                    {
+                        "term": "LFU (Least Frequently Used)",
+                        "definition": "Evict the entry with the lowest access count. Keeps entries that are accessed most OFTEN, regardless of recency. HOW IT WORKS INTERNALLY: Each entry has a frequency counter. On access, counter increments. On eviction, pick the entry with lowest counter. Tie-breaking: evict the least recently used among lowest-frequency entries. Redis uses a probabilistic LFU: the counter is a logarithmic counter (8-bit, max value 255) with a decay mechanism. Counter doesn't just increment by 1 — it uses a probabilistic formula: new_counter = min(255, old_counter + 1/(old_counter × lfu_log_factor + 1)). This means counter grows slower as it gets higher, preventing popular items from having permanently maxed-out counters. Decay: periodically reduced based on elapsed time (lfu-decay-time, default 1 minute). If a key was popular an hour ago but not recently, its counter drops, making it eligible for eviction. CONFIGURABLE: lfu-log-factor (default 10, higher = slower counter growth) and lfu-decay-time (default 1 min, how often counters decay). WHEN TO USE: When a few items are consistently popular (e-commerce top sellers, trending topics). Better than LRU when access distribution follows Zipf's law."
+                    },
+                    {
+                        "term": "TTL (Time-To-Live)",
+                        "definition": "Each entry has an expiration timestamp. After TTL, the entry is auto-deleted (or marked expired and lazily cleaned). Not an eviction policy per se — works alongside LRU/LFU. In Redis: SET key value EX 300 (expire in 300 seconds). Redis uses two mechanisms for expiry: (1) Lazy deletion — when a key is accessed, Redis checks if it's expired and deletes it. (2) Active expiry — a periodic background task (~10 times/sec) randomly samples 20 expired keys from the keyspace and deletes them. If >25% are expired, it repeats immediately. This avoids scanning all keys and bounds CPU usage. EDGE CASE: If you set TTL but no maxmemory policy, Redis will grow unbounded until OOM-killed. Always configure maxmemory + eviction policy."
+                    },
+                    {
+                        "term": "FIFO (First In First Out)",
+                        "definition": "Evict the oldest entry regardless of access pattern. Rarely used in practice because it ignores both recency and frequency — a hot key that was inserted first would be evicted before a cold key inserted later."
+                    },
+                    {
+                        "term": "Random Eviction",
+                        "definition": "Evict a random entry. Surprisingly, random eviction performs within 15-20% of LRU for uniform workloads. O(1) implementation — no metadata tracking required. Redis supports this as allkeys-random or volatile-random."
+                    }
+                ]
+            },
+            "configurable_params": [
+                {
+                    "name": "maxmemory (Redis)",
+                    "default": "0 (no limit, DANGEROUS)",
+                    "effect": "Sets the maximum memory Redis will use. When reached, eviction policy kicks in.",
+                    "tradeoff": "Too low = frequent evictions, low hit rate. Too high = risk of OOM. Industry standard: set to 75% of available RAM, leaving room for overhead."
+                },
+                {
+                    "name": "maxmemory-policy (Redis)",
+                    "default": "noeviction (returns error when full)",
+                    "effect": "Options: allkeys-lru, allkeys-lfu, volatile-lru, volatile-lfu, allkeys-random, volatile-random, volatile-ttl, noeviction",
+                    "tradeoff": "allkeys-lru is the safest default for general caching. volatile-lru only evicts keys with a TTL set (keeps permanent keys safe). noeviction means writes fail when full — use only when data loss is unacceptable."
+                },
+                {
+                    "name": "maxmemory-samples (Redis)",
+                    "default": "5",
+                    "effect": "Number of keys sampled for LRU/LFU approximation. Higher = more accurate but slightly more CPU.",
+                    "tradeoff": "5 is good enough for most workloads. 10 gives near-perfect LRU accuracy. Above 10 has diminishing returns."
+                }
+            ],
+            "children": []
+        },
+        {
+            "id": "ch07.s04",
+            "title": "Redis Internals — Deep Dive",
+            "parent_id": "ch07",
+            "order": 4,
+            "tags": [
+                "redis",
+                "internals",
+                "event-loop",
+                "data-structures",
+                "persistence",
+                "replication"
+            ],
+            "summary": "How Redis achieves 100K+ ops/sec on a single thread — its event loop, internal data structures, persistence mechanisms, and clustering architecture.",
+            "explanation": {
+                "overview": "Redis is an open-source, in-memory data structure server used as a cache, database, message broker, and more. Despite being primarily single-threaded, it handles 100K-200K operations/second because it avoids disk I/O in the hot path, uses efficient in-memory data structures, and leverages OS I/O multiplexing to handle thousands of concurrent connections.",
+                "how_it_works_internally": "When a Redis instance starts, it creates a single main thread that runs an event loop. This loop uses epoll (Linux) or kqueue (macOS) to monitor all client sockets. When data arrives on any socket, the event loop reads the command, executes it against in-memory data structures, and writes the response — all in the same thread. No context switches, no lock contention, no race conditions. The simplicity is the secret to its speed."
+            },
+            "children": [
+                {
+                    "id": "ch07.s04.event_loop",
+                    "title": "The Single-Threaded Event Loop",
+                    "parent_id": "ch07.s04",
+                    "order": 1,
+                    "tags": [
+                        "event-loop",
+                        "epoll",
+                        "io-multiplexing",
+                        "single-threaded"
+                    ],
+                    "summary": "Redis processes all commands on one thread using I/O multiplexing — this is why it's so fast and why long-running commands are dangerous.",
+                    "explanation": {
+                        "overview": "Redis's main thread runs an infinite event loop (ae event library, Redis's custom event framework). Each iteration: (1) Call epoll_wait() to check which sockets have data ready. (2) For each ready socket, read the command, parse it, execute it, and buffer the response. (3) Write buffered responses to ready-for-write sockets. (4) Process time-based events (TTL expiry, persistence triggers). All operations complete before moving to the next — this guarantees atomicity of individual commands.",
+                        "how_it_works_internally": "Step-by-step inside a single event loop iteration: (1) epoll_wait(fd_set, timeout) → returns list of file descriptors with pending I/O. (2) For each readable fd: read bytes into client input buffer → parse RESP protocol (e.g., *3\\r\\n$3\\r\\nSET\\r\\n$3\\r\\nfoo\\r\\n$3\\r\\nbar\\r\\n) → look up command table → execute command function (e.g., setCommand) → append response to client output buffer. (3) For each writable fd: flush output buffer to socket. (4) Handle timer events: sample expired keys (active expiry), check if persistence (RDB/AOF) needs to trigger, update internal stats.",
+                        "key_concepts": [
+                            {
+                                "term": "Why single-threaded is FAST",
+                                "definition": "Multi-threaded systems pay a hidden cost: mutex locking (50-100ns per lock/unlock), cache line invalidation when threads on different cores access shared data, context switching (1-10µs). Redis avoids ALL of this. A single SET command takes ~1µs. Adding lock overhead would double it. At 100K ops/sec, that's the difference between using 10% CPU and 20% CPU."
+                            },
+                            {
+                                "term": "I/O Multiplexing (epoll)",
+                                "definition": "epoll is a Linux kernel mechanism that lets one thread monitor thousands of sockets simultaneously. Instead of checking each socket one-by-one (poll) or spawning a thread per socket (threaded model), epoll says: 'sleep until ANY of these 50,000 sockets has data, then wake me up and tell me which ones.' This is O(1) per event — performance doesn't degrade with more connections."
+                            },
+                            {
+                                "term": "Multi-threaded I/O (Redis 6.0+)",
+                                "definition": "Starting in Redis 6.0, the I/O READ and I/O WRITE portions can be offloaded to multiple I/O threads (default: disabled, configurable via io-threads 4). The COMMAND EXECUTION still happens on the single main thread. This helps when network I/O is the bottleneck (large responses, TLS encryption). Main thread: parse commands + execute. I/O threads: read from sockets, write responses. Improvement: 2× throughput for network-bound workloads."
+                            },
+                            {
+                                "term": "DANGER: Blocking commands",
+                                "definition": "Since everything runs on one thread, a slow command blocks ALL other clients. KEYS * scans the entire keyspace — on a database with 10M keys, this takes seconds. During that time, no other commands execute and all clients appear frozen. Similarly, large SORT, LRANGE on huge lists, or Lua scripts with infinite loops. INDUSTRY RULE: NEVER use KEYS in production. Use SCAN (cursor-based, non-blocking iteration). Monitor slow commands with SLOWLOG GET."
+                            }
+                        ]
+                    },
+                    "common_mistakes": [
+                        "Using KEYS * in production — blocks the entire server for seconds or minutes on large datasets. Use SCAN instead.",
+                        "Running Lua scripts that take >5 seconds — this blocks all operations. Redis has a lua-time-limit (default 5000ms) after which other clients get BUSY errors, but the script continues.",
+                        "Not understanding that MULTI/EXEC is NOT a distributed transaction — it's a batch execution guarantee on a single node. It doesn't provide isolation between commands."
+                    ],
+                    "children": []
+                },
+                {
+                    "id": "ch07.s04.data_structures",
+                    "title": "Redis Internal Data Structures",
+                    "parent_id": "ch07.s04",
+                    "order": 2,
+                    "tags": [
+                        "SDS",
+                        "skip-list",
+                        "hash-table",
+                        "ziplist",
+                        "quicklist"
+                    ],
+                    "summary": "Redis implements each user-facing type with optimized internal data structures that switch representations based on data size.",
+                    "explanation": {
+                        "overview": "Redis is called a 'data structure server' because it doesn't just store key-value strings — it supports lists, sets, sorted sets, hashes, streams, bitmaps, and hyperloglogs, each backed by carefully chosen internal data structures optimized for both speed and memory.",
+                        "key_concepts": [
+                            {
+                                "term": "String → SDS (Simple Dynamic String)",
+                                "definition": "Redis doesn't use C strings (null-terminated). It uses SDS, which stores: (1) len (current length), (2) alloc (allocated space), (3) flags (encoding type), (4) buf[] (the actual bytes). Benefits: O(1) strlen (C strings are O(n)), binary safe (can store null bytes), prevents buffer overflows (bounds checked). Memory optimization: for integers ≤ 63 bits, Redis stores the value directly as a long int (no SDS allocation). For short strings ≤ 44 bytes, uses embstr encoding (single allocation for the Redis object + SDS). For longer strings, uses raw encoding (two allocations)."
+                            },
+                            {
+                                "term": "List → QuickList (linked list of ZipLists)",
+                                "definition": "A doubly-linked list where each node contains a ZipList (a compact, sequential byte array of entries). Default: each ZipList node holds ≤ 128 entries or ≤ 8 KB (configurable via list-max-ziplist-size). LPUSH/RPUSH: append to head/tail ZipList node. If node exceeds limit, split into a new node. LRANGE: traverse nodes sequentially. Why not a plain linked list? Each linked list node has two 8-byte pointers (prev, next) + the value. For a list of 1-byte values, that's 17 bytes of overhead per element. ZipList packs entries contiguously in memory — ~3 bytes overhead per entry. QuickList gets O(1) push/pop at both ends with memory efficiency. Configurable: list-max-ziplist-size (entries per node), list-compress-depth (compress middle nodes with LZF, keep N end nodes uncompressed for fast access)."
+                            },
+                            {
+                                "term": "Hash → ZipList or HashTable",
+                                "definition": "For small hashes (≤ 128 fields AND all values ≤ 64 bytes), Redis uses a ZipList — entries stored as [field1, value1, field2, value2, ...] sequentially in memory. Lookup is O(n) on the ZipList, but for small n this is faster than a hash table due to cache locality. When thresholds are exceeded, Redis converts to a proper hash table (dict) with O(1) amortized lookup. Configurable: hash-max-ziplist-entries (default 128), hash-max-ziplist-value (default 64 bytes)."
+                            },
+                            {
+                                "term": "Set → IntSet or HashTable",
+                                "definition": "If all members are integers and count ≤ 512, Redis uses IntSet — a sorted array of integers with binary search O(log n). Very memory-efficient: no pointers, just packed integers. When conditions are violated (non-integer member or size > 512), converts to HashTable. Configurable: set-max-intset-entries (default 512)."
+                            },
+                            {
+                                "term": "Sorted Set (ZSet) → ZipList or SkipList + HashTable",
+                                "definition": "For small sorted sets (≤ 128 entries AND all values ≤ 64 bytes), Redis uses a ZipList with [member, score] pairs sorted by score. For larger sets, Redis uses TWO structures simultaneously: (1) SkipList for O(log N) range queries by score (ZRANGEBYSCORE, ZRANK), and (2) HashTable for O(1) member → score lookup (ZSCORE). SKIP LIST INTERNALS: A probabilistic data structure — entries exist at multiple levels. Level 0 has all entries. Each subsequent level has ~50% of the entries below it (chosen by coin flip during insert). Search starts from the highest level, drops down when the next node at the current level exceeds the target. Average O(log N) search/insert/delete. Why skip list over balanced BST (Red-Black tree)? Simpler to implement, easier to make concurrent (though Redis is single-threaded), similar performance. Range queries are natural — just walk forward on level 0."
+                            },
+                            {
+                                "term": "HyperLogLog",
+                                "definition": "Probabilistic cardinality estimator. Counts approximate number of unique elements using only ~12 KB of memory regardless of cardinality (could be billions). Internally uses 16384 (2^14) 6-bit registers. Each element is hashed → hash split into: first 14 bits select the register, remaining bits → count leading zeros + 1. The register stores the maximum leading-zero count seen. Estimated cardinality = harmonic mean formula across all registers. Error rate: ~0.81% standard error. Use: unique visitors count, unique search queries, distinct IP addresses. Commands: PFADD (add element), PFCOUNT (get estimate), PFMERGE (combine multiple HLLs)."
+                            },
+                            {
+                                "term": "Geo",
+                                "definition": "Geospatial data stored as a Sorted Set where the score is a 52-bit GeoHash interleaving latitude and longitude bits. GEOADD adds a location, GEODIST calculates distance, GEOSEARCH finds members within a radius or bounding box. Internally, radius queries translate to a score range query on the sorted set (GeoHash cells within the radius)."
+                            },
+                            {
+                                "term": "Stream",
+                                "definition": "Append-only log (like a mini Kafka). Each entry has an auto-generated ID (timestamp-sequence). Consumer groups with XREADGROUP provide Kafka-like fan-out. Entries persist until explicitly trimmed (XTRIM) or MAXLEN limit. Use for: event sourcing, activity feeds, message queues within Redis. Internal structure: radix tree of listpacks (compressed entry containers)."
+                            }
+                        ]
+                    },
+                    "configurable_params": [
+                        {
+                            "name": "hash-max-ziplist-entries",
+                            "default": "128",
+                            "effect": "Hashes with ≤ this many fields use ZipList (memory-efficient). Above this → HashTable.",
+                            "tradeoff": "Higher values save memory but slow down O(n) lookups on large ZipLists. 128 is the sweet spot."
+                        },
+                        {
+                            "name": "zset-max-ziplist-entries",
+                            "default": "128",
+                            "effect": "Sorted sets with ≤ this many entries use ZipList.",
+                            "tradeoff": "Same as hash — balance between memory efficiency and lookup speed."
+                        },
+                        {
+                            "name": "list-compress-depth",
+                            "default": "0 (no compression)",
+                            "effect": "Compress middle nodes of QuickList with LZF. Value N means keep N nodes at each end uncompressed.",
+                            "tradeoff": "Saves memory for long lists at the cost of CPU for decompression when accessing middle elements."
+                        }
+                    ],
+                    "children": []
+                },
+                {
+                    "id": "ch07.s04.persistence",
+                    "title": "Redis Persistence — RDB & AOF",
+                    "parent_id": "ch07.s04",
+                    "order": 3,
+                    "tags": [
+                        "RDB",
+                        "AOF",
+                        "persistence",
+                        "durability",
+                        "crash-recovery"
+                    ],
+                    "summary": "Redis is in-memory but can persist data to disk via RDB snapshots, AOF command logging, or a hybrid of both.",
+                    "explanation": {
+                        "overview": "Without persistence, a Redis restart loses all data. Redis offers three persistence modes, each with different durability, performance, and recovery speed trade-offs.",
+                        "key_concepts": [
+                            {
+                                "term": "RDB (Redis Database Backup)",
+                                "definition": "Point-in-time snapshot of the entire dataset written to a binary file (dump.rdb). HOW IT WORKS INTERNALLY: (1) Redis forks the main process using fork(). This creates a child process with a copy of the entire memory space. (2) The child process serializes all data to dump.rdb using a compact binary format. (3) The parent process continues serving requests — writes after fork are handled via Copy-On-Write (COW). The OS only copies memory pages that are modified, not the entire dataset. (4) When the child finishes, it atomically replaces the old dump.rdb. TRIGGERS: manual (BGSAVE command), or automatic based on rules (e.g., 'save 900 1' = save if at least 1 key changed in 900 seconds). ADVANTAGES: compact file, fast restart (just load binary into memory), good for backups (copy dump.rdb to S3 daily). DISADVANTAGES: you can lose data between snapshots. If Redis crashes 5 minutes after the last snapshot, 5 minutes of writes are lost. EDGE CASE: fork() doubles the memory footprint momentarily (COW helps, but heavily written datasets can use up to 2× RAM during snapshot). On a 50 GB Redis instance, ensure the server has 100 GB RAM for safe RDB snapshots."
+                            },
+                            {
+                                "term": "AOF (Append-Only File)",
+                                "definition": "Every write command is appended to a log file (appendonly.aof) in the RESP protocol format. On restart, Redis replays all commands to rebuild the dataset. HOW IT WORKS INTERNALLY: (1) Command executes in memory. (2) Command is formatted as RESP and appended to an AOF buffer. (3) The buffer is flushed to disk based on fsync policy: 'always' = fsync after every command (safest, slowest — max 1 command lost), 'everysec' = fsync once per second (default — max ~1 second of data lost, good performance), 'no' = let OS decide when to flush (fastest, up to 30 seconds of data loss on Linux). AOF REWRITE: Over time, AOF files grow huge (every SET, DEL, INCR is logged). Redis periodically rewrites the AOF: fork a child → child generates a new compact AOF with only the minimum commands needed to reproduce the current dataset → atomically replace old AOF. Example: if key 'counter' was INCRed 1 million times, rewrite replaces 1M INCR commands with a single SET counter 1000000. ADVANTAGES: much higher durability than RDB (at most 1 second data loss with everysec). DISADVANTAGES: larger files than RDB, slower restart (must replay all commands), fsync overhead on every write (if 'always' mode)."
+                            },
+                            {
+                                "term": "Hybrid Persistence (RDB + AOF)",
+                                "definition": "Best of both worlds, available since Redis 4.0 (aof-use-rdb-preamble yes). During AOF rewrite, the child writes the dataset as RDB format (fast, compact) followed by any new commands received during rewrite in AOF format. On restart: load the RDB portion (fast binary load) → replay the small AOF tail (a few seconds of commands). Result: fast restart (RDB speed) + high durability (AOF safety). RECOMMENDATION: This is the industry standard for production Redis. Enable it unless you have a specific reason not to."
+                            }
+                        ]
+                    },
+                    "configurable_params": [
+                        {
+                            "name": "appendonly",
+                            "default": "no",
+                            "effect": "Enable AOF persistence",
+                            "tradeoff": "Slightly lower write throughput due to disk I/O, but much better durability"
+                        },
+                        {
+                            "name": "appendfsync",
+                            "default": "everysec",
+                            "effect": "'always' = fsync every write (safest), 'everysec' = fsync per second (recommended), 'no' = OS-managed",
+                            "tradeoff": "'always' reduces throughput by 50-80% but guarantees at most 1 command lost. 'everysec' is practically zero-overhead with max 1-second data window."
+                        },
+                        {
+                            "name": "save <seconds> <changes>",
+                            "default": "save 3600 1; save 300 100; save 60 10000",
+                            "effect": "RDB snapshot triggers. 'save 60 10000' = snapshot if 10K keys changed in 60 seconds.",
+                            "tradeoff": "More frequent snapshots = less data loss but more CPU/memory usage from fork()"
+                        },
+                        {
+                            "name": "aof-use-rdb-preamble",
+                            "default": "yes (since Redis 4.0)",
+                            "effect": "Enables hybrid persistence — RDB format + AOF tail",
+                            "tradeoff": "No real downside. Recommended always-on."
+                        }
+                    ],
+                    "children": []
+                },
+                {
+                    "id": "ch07.s04.cluster",
+                    "title": "Redis Cluster & Replication",
+                    "parent_id": "ch07.s04",
+                    "order": 4,
+                    "tags": [
+                        "redis-cluster",
+                        "replication",
+                        "hash-slots",
+                        "failover"
+                    ],
+                    "summary": "How Redis scales horizontally via cluster mode with 16384 hash slots, and how replication provides high availability with automatic failover.",
+                    "explanation": {
+                        "overview": "A single Redis instance is limited by one machine's RAM (~100-200 GB max practically). Redis Cluster distributes data across multiple master nodes, each owning a subset of the keyspace. Each master can have replica nodes for failover.",
+                        "how_it_works_internally": "Redis Cluster divides the keyspace into 16384 hash slots. Each key is assigned to a slot: slot = CRC16(key) % 16384. Each master node owns a range of slots (e.g., Node A: 0-5460, Node B: 5461-10922, Node C: 10923-16383 for a 3-node cluster). When a client sends a command, the node checks if it owns the key's slot. If yes, execute. If no, return a MOVED redirect telling the client which node owns that slot. Smart clients (Jedis, ioredis) learn the slot map upfront and route directly. Replication: each master has 1+ replica nodes. Replicas receive a continuous stream of write commands from the master (asynchronous replication). If a master fails, the cluster promotes a replica via Raft-like election among replicas — the one with the most recent data wins. Failover completes in 1-60 seconds depending on detection speed (node-timeout, default 15 seconds). EDGE CASE: during failover, acknowledged writes not yet replicated to the promoted replica ARE LOST. Redis Cluster does NOT guarantee strong consistency. It provides at-most-once delivery — suitable for caching but not for financial transactions without external consistency mechanisms.",
+                        "key_concepts": [
+                            {
+                                "term": "Hash Slots",
+                                "definition": "16384 slots — a fixed number chosen for compactness (each node stores a 16384-bit bitmap of its owned slots = 2 KB). Keys are mapped to slots via CRC16 hash. Hash tags allow related keys to be on the same slot: {user:123}.profile and {user:123}.settings both hash only on 'user:123', landing on the same node. This enables multi-key operations (MGET, Lua scripts, transactions) on related keys."
+                            },
+                            {
+                                "term": "MOVED vs ASK redirects",
+                                "definition": "MOVED means the slot is permanently on another node (client should update its slot map). ASK means the slot is being migrated — try the target node for this specific request only, but don't update the slot map yet. During slot migration, the source node returns ASK for keys that have already moved."
+                            },
+                            {
+                                "term": "Gossip Protocol",
+                                "definition": "Cluster nodes communicate via gossip — each node pings a few random nodes every second, exchanging: which slots each node owns, which nodes are up/down, replication topology. Failure detection: if a node doesn't respond to pings within node-timeout, it's marked as PFAIL (possibly failed). When a majority of masters agree a node is PFAIL, it becomes FAIL and failover begins."
+                            }
+                        ]
+                    },
+                    "configurable_params": [
+                        {
+                            "name": "cluster-node-timeout",
+                            "default": "15000 ms (15 seconds)",
+                            "effect": "Time to wait before marking a node as PFAIL. Lower = faster failover but more false positives.",
+                            "tradeoff": "In noisy networks with packet loss, a low timeout causes unnecessary failovers. 15s is a good default. For low-latency requirements, use 5000ms."
+                        },
+                        {
+                            "name": "cluster-require-full-coverage",
+                            "default": "yes",
+                            "effect": "If any slot range is unserved (master down, no replica), the entire cluster rejects ALL writes. Set to 'no' to allow partial availability.",
+                            "tradeoff": "'yes' is safer (prevents writes to incomplete data). 'no' is more available (other slots still work)."
+                        },
+                        {
+                            "name": "min-replicas-to-write",
+                            "default": "0",
+                            "effect": "Master refuses writes if fewer than N replicas are connected. Set to 1 to avoid single-point data loss.",
+                            "tradeoff": "Reduces availability (master rejects writes when replica is down) but improves durability."
+                        }
+                    ],
+                    "children": []
+                }
+            ]
+        },
+        {
+            "id": "ch07.s05",
+            "title": "Cache Problems & Industry Solutions",
+            "parent_id": "ch07",
+            "order": 5,
+            "tags": [
+                "cache-stampede",
+                "hot-key",
+                "consistency",
+                "cold-start",
+                "thundering-herd"
+            ],
+            "summary": "The four major caching problems that come up in every system design interview, and how companies like Facebook, Twitter, and Netflix solve them.",
+            "explanation": {
+                "overview": "Caching solves 90% of performance problems but creates its own category of bugs. These problems are interview favorites because they test whether you understand caching beyond the basics."
+            },
+            "children": [
+                {
+                    "id": "ch07.s05.stampede",
+                    "title": "Cache Stampede (Thundering Herd)",
+                    "parent_id": "ch07.s05",
+                    "order": 1,
+                    "tags": [
+                        "stampede",
+                        "thundering-herd",
+                        "singleflight",
+                        "mutex"
+                    ],
+                    "summary": "When a hot key expires and thousands of concurrent requests all miss the cache simultaneously, overwhelming the database.",
+                    "explanation": {
+                        "overview": "Scenario: a cached product page (10K requests/sec) expires. All 10K requests in that second miss the cache and hit the database simultaneously. The DB, which normally handles 100 QPS for this table, is now buried under 10K queries. It either slows down drastically or crashes, causing cascading failures.",
+                        "how_it_works_internally": "Timeline: T=0: key expires. T=0.001s: Request A cache-misses, starts DB query. T=0.002s: Request B cache-misses, starts ANOTHER DB query (A hasn't finished yet). T=0.003s-0.100s: requests C through Z all do the same. Result: 10,000 identical DB queries running simultaneously. By T=0.5s: DB connection pool exhausted, queries start timing out, error rates spike.",
+                        "key_concepts": [
+                            {
+                                "term": "Solution 1: Mutex / Singleflight Lock",
+                                "definition": "Only the first request that misses is allowed to fetch from DB. All other concurrent requests wait for it. Implementation: use Redis SETNX (SET if Not eXists) with a short TTL (5-10 seconds) as a distributed lock. If SETNX returns 1 (lock acquired), fetch from DB and populate cache. If returns 0 (lock already held), wait 50ms and retry cache.get(). In Go: use golang.org/x/sync/singleflight — deduplicates in-flight function calls with the same key. Java: use Caffeine cache's built-in loading mechanism. EDGE CASE: what if the lock-holding request crashes before populating the cache? The lock TTL (5-10s) ensures eventual release. Add a reasonable DB query timeout (2 seconds) inside the lock."
+                            },
+                            {
+                                "term": "Solution 2: Stale-While-Revalidate",
+                                "definition": "Serve the EXPIRED (stale) cached value to all requests while ONE background thread refreshes from DB. The user gets slightly stale data (milliseconds to seconds old) but experiences zero latency spike. Implementation: store cache entries with 'logical TTL' (5 min) and 'physical TTL' (10 min). After logical TTL, the entry is 'stale' but still present. First request after logical TTL triggers an async refresh; all requests continue serving stale value until refresh completes."
+                            },
+                            {
+                                "term": "Solution 3: Probabilistic Early Expiration (XFetch)",
+                                "definition": "Before TTL expires, each request has a small random probability of proactively refreshing the cache. As TTL approaches, the probability increases. Formula: should_refresh = (random() < beta * log(random()) * (current_time - fetch_time)). This spreads the refresh across multiple time windows, making a simultaneous stampede mathematically impossible. Paper: 'Optimal Probabilistic Cache Stampede Prevention' by Vattani et al."
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "id": "ch07.s05.hot_key",
+                    "title": "Hot Key Problem",
+                    "parent_id": "ch07.s05",
+                    "order": 2,
+                    "tags": [
+                        "hot-key",
+                        "viral",
+                        "load-distribution"
+                    ],
+                    "summary": "A single cache key receives so much traffic that it overwhelms the cache node hosting it.",
+                    "explanation": {
+                        "overview": "In Redis Cluster, each key lives on exactly one node (determined by hash slot). If a key goes viral (e.g., celebrity tweet, flash sale product), that single node receives all traffic for that key while other nodes sit idle. At 500K reads/sec on one key, even Redis starts to bottleneck on network bandwidth or CPU.",
+                        "key_concepts": [
+                            {
+                                "term": "Solution 1: Key Replication (Read Copies)",
+                                "definition": "Create N copies of the hot key across N different cache nodes: key:original, key:copy1, key:copy2, ..., key:copyN. On read, randomly select one copy: cache.get('product:123:' + random(0, N)). On write, update ALL copies. This distributes read load across N nodes. TRADE-OFF: writes become N× more expensive and must be atomically consistent across copies. Use for: read-heavy hot keys (product pages, profiles) where writes are infrequent."
+                            },
+                            {
+                                "term": "Solution 2: Local / L1 In-Process Cache",
+                                "definition": "Cache the hot key in each application server's local memory (in-process cache). Set a very short TTL (1-5 seconds) to limit staleness. With 100 app servers, each caching locally, Redis receives 100 requests/5 seconds instead of 500K/second. This is the most practical approach for read-dominated hot keys."
+                            },
+                            {
+                                "term": "Solution 3: Detect and Split",
+                                "definition": "Monitor key access frequency (Redis OBJECT FREQ if LFU is enabled, or track in application). When a key exceeds a threshold (e.g., 10K/sec), automatically create replicated copies. This is what Twitter does for viral tweet caches."
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "id": "ch07.s05.consistency",
+                    "title": "Cache Consistency",
+                    "parent_id": "ch07.s05",
+                    "order": 3,
+                    "tags": [
+                        "consistency",
+                        "invalidation",
+                        "stale-data",
+                        "cache-db-sync"
+                    ],
+                    "summary": "Keeping cache in sync with the database is the hardest problem in caching — Phil Karlton famously said there are only two hard things in CS: cache invalidation and naming things.",
+                    "explanation": {
+                        "overview": "When data changes in the database, the cached version becomes stale. The question is: how do you ensure users don't see stale data, and how quickly must the cache reflect changes?",
+                        "key_concepts": [
+                            {
+                                "term": "Strategy 1: TTL-Based Expiry (Simplest)",
+                                "definition": "Set a TTL on every cached entry. After TTL, the next read fetches fresh from DB. Consistency window = TTL value. For a 5-minute TTL, data can be up to 5 minutes stale. Acceptable for: product listings (new products appear within minutes), social feeds (new posts take seconds to appear), search results. NOT acceptable for: account balances, inventory counts, real-time prices."
+                            },
+                            {
+                                "term": "Strategy 2: Write-Through Invalidation",
+                                "definition": "On every database write, immediately delete or update the corresponding cache key. This reduces the staleness window to milliseconds (time between DB write and cache invalidation). RACE CONDITION: Two concurrent requests: (1) Read request cache-misses, reads DB (gets old value). (2) Write request updates DB, deletes cache. (3) Read request finishes and writes OLD value to cache. Now cache has stale data until TTL expires. FIX: use 'delayed double-delete' — after DB write, delete cache, wait 500ms, delete cache again. The second delete catches the stale repopulation."
+                            },
+                            {
+                                "term": "Strategy 3: Change Data Capture (CDC)",
+                                "definition": "Use a CDC tool (Debezium) to stream database changes (INSERT/UPDATE/DELETE) to a message queue (Kafka). A cache invalidation consumer reads the stream and deletes or updates the corresponding cache keys. ADVANTAGE: fully decoupled — the application code doesn't need to know about cache invalidation. The CDC pipeline handles it automatically. Works across microservices — Service A writes to DB, Service B's cache is invalidated via CDC. DISADVANTAGE: added infrastructure complexity (Debezium + Kafka + consumer). Latency: invalidation happens asynchronously (100ms - few seconds delay)."
+                            },
+                            {
+                                "term": "Strategy 4: Lease-Based Approach (Facebook's Memcache)",
+                                "definition": "From Facebook's famous 'Scaling Memcache at Facebook' paper. On cache miss, the cache server issues a 'lease' token to the requesting client. The client fetches from DB and uses the lease token to write back. If the key was invalidated (by a write) between the miss and the write-back, the lease is revoked and the stale write is rejected. This elegantly prevents the read-after-write race condition. Facebook uses this at scale across thousands of Memcached instances."
+                            }
+                        ]
+                    },
+                    "references": [
+                        {
+                            "title": "Scaling Memcache at Facebook — NSDI 2013 Paper",
+                            "url": "https://research.facebook.com/publications/scaling-memcache-at-facebook/"
+                        }
+                    ],
+                    "children": []
+                },
+                {
+                    "id": "ch07.s05.cold_start",
+                    "title": "Cold Start / Cache Warming",
+                    "parent_id": "ch07.s05",
+                    "order": 4,
+                    "tags": [
+                        "cold-start",
+                        "warming",
+                        "deployment"
+                    ],
+                    "summary": "When cache is empty (fresh deploy, restart, or new region), all requests hit the DB simultaneously.",
+                    "explanation": {
+                        "overview": "After a Redis restart, deploy of new cache nodes, or launch of a new region, the cache is empty. The first wave of traffic causes 100% cache misses, potentially overloading the database.",
+                        "key_concepts": [
+                            {
+                                "term": "Pre-warming from DB",
+                                "definition": "Before routing traffic, run a script that pre-populates the cache with the top N most accessed keys from the database. Query the DB for the most popular items (based on access logs or analytics), and SET them in Redis. This ensures the most critical keys are cached before the first user request."
+                            },
+                            {
+                                "term": "Pre-warming from backup/snapshot",
+                                "definition": "If Redis was running with RDB persistence, restore the latest dump.rdb to the new instance. This restores the entire previous cache state in seconds. EDGE CASE: the snapshot may be hours old — combine with a short initial TTL to force refresh of potentially stale entries."
+                            },
+                            {
+                                "term": "Gradual traffic ramp-up",
+                                "definition": "Don't blast 100% traffic at the new cache instantly. Use the load balancer to gradually shift traffic: 1% → 5% → 25% → 50% → 100% over 10-30 minutes. Each percentage point fills the cache a bit more before the next increase."
+                            }
+                        ]
+                    },
+                    "children": []
+                }
+            ]
+        }
+    ],
+    "diagram": {
+        "type": "excalidraw",
+        "title": "Cache-Aside Pattern — Read & Write Flow",
+        "description": "Shows the cache-aside read flow (check cache → miss → query DB → populate cache) and write flow (write DB → invalidate cache).",
+        "data": {
+            "type": "excalidraw",
+            "version": 2,
+            "elements": [
+                {
+                    "type": "rectangle",
+                    "x": 300,
+                    "y": 50,
+                    "width": 160,
+                    "height": 50,
+                    "backgroundColor": "#a5d8ff",
+                    "label": "Application Server"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 100,
+                    "y": 200,
+                    "width": 120,
+                    "height": 50,
+                    "backgroundColor": "#ffc9c9",
+                    "label": "Redis Cache"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 500,
+                    "y": 200,
+                    "width": 130,
+                    "height": 50,
+                    "backgroundColor": "#b2f2bb",
+                    "label": "Database"
+                },
+                {
+                    "type": "text",
+                    "x": 140,
+                    "y": 120,
+                    "text": "1. GET key →\n← HIT: return"
+                },
+                {
+                    "type": "text",
+                    "x": 470,
+                    "y": 120,
+                    "text": "2. MISS →\nquery DB"
+                },
+                {
+                    "type": "text",
+                    "x": 120,
+                    "y": 280,
+                    "text": "3. SET key = value\n(populate cache)"
+                },
+                {
+                    "type": "text",
+                    "x": 460,
+                    "y": 280,
+                    "text": "WRITE: update DB\nthen DELETE key\nfrom cache"
+                }
+            ]
+        }
+    },
+    "references": [
+        {
+            "title": "Redis Documentation — Data Types Internals",
+            "url": "https://redis.io/docs/latest/develop/data-types/"
+        },
+        {
+            "title": "Scaling Memcache at Facebook (NSDI 2013)",
+            "url": "https://research.facebook.com/publications/scaling-memcache-at-facebook/"
+        },
+        {
+            "title": "Optimal Probabilistic Cache Stampede Prevention",
+            "url": "https://cseweb.ucsd.edu/~avattani/papers/cache_stampede.pdf"
+        },
+        {
+            "title": "Redis Cluster Specification",
+            "url": "https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/"
+        }
+    ]
+}

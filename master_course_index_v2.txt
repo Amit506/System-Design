@@ -1,0 +1,328 @@
+=====================================================================
+  MASTER SYSTEM DESIGN COURSE INDEX (v2 — ENRICHED WITH INTERNALS)
+  Sources: Ultimate Roadmap · roadmap.sh · hellointerview.com · LLDMastery
+  + Internet research on internal mechanics
+=====================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 0 — INTRODUCTION & HOW TO APPROACH SYSTEM DESIGN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  0.1  What is System Design?
+  0.2  LLD vs HLD — The Abstraction Ladder
+  0.3  Types of System Design Interviews (Product, Infrastructure, ML)
+  0.4  How to Approach a System Design Interview
+  0.5  Interview Delivery Framework (6-Step Blueprint)
+         Step 1: Functional Requirements (actors, use cases, scope)
+         Step 2: Non-Functional Requirements (latency, availability, scale)
+         Step 3: Capacity Estimation — QPS, Storage, Bandwidth, Memory
+         Step 4: Core Entities + API Design (REST endpoints / events)
+         Step 5: High-Level Design (boxes & arrows diagram)
+         Step 6: Deep Dives — bottlenecks, edge cases, scaling
+  0.6  Back-of-the-Envelope Estimation
+         - DAU → QPS: DAU × requests/day ÷ 86,400
+         - Storage: rows/day × row_size × retention_years
+         - Bandwidth: QPS × payload_size
+  0.7  Numbers Every Engineer MUST Know
+         - L1 cache: ~1 ns   | L2: ~4 ns  | RAM: ~100 ns
+         - SSD read: ~100 µs | HDD: ~10 ms | Network round-trip: ~150 ms
+         - 1 Gbps NIC → ~125 MB/s; 10 Gbps → 1.25 GB/s
+         - 99.9% uptime = 8.7 hrs downtime/yr
+         - 99.99% uptime = 52.6 min/yr
+         - 99.999% = 5.26 min/yr
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 1 — OOP & LOW-LEVEL DESIGN FOUNDATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1.1  OOP Core Concepts
+         - Encapsulation, Inheritance, Polymorphism, Abstraction
+         - Static Members, Super Keyword
+
+  1.2  SOLID Principles
+         - SRP: one reason to change per class
+         - OCP: open for extension, closed for modification
+         - LSP: subtypes substitutable for base types
+         - ISP: don't force clients to implement unused methods
+         - DIP: depend on abstractions, not concretions
+
+  1.3  General Design Principles
+         - DRY, KISS, YAGNI
+         - Law of Demeter (talk only to immediate friends)
+         - Composition > Inheritance
+         - Hollywood Principle (IoC)
+         - Fail Fast, Program to Interface
+
+  1.4  Design Patterns (GoF)
+         Creational:
+           - Singleton (thread-safe: double-checked locking + volatile)
+           - Factory Method, Abstract Factory
+           - Builder, Prototype
+         Structural:
+           - Adapter, Decorator, Facade, Proxy
+           - Composite, Flyweight, Bridge
+         Behavioral:
+           - Strategy, Observer, Command, Iterator
+           - State, Template Method, Chain of Responsibility
+           - Mediator, Memento, Visitor
+
+  1.5  Class Relationships (UML)
+         - Association, Aggregation, Composition
+         - Inheritance (Is-A), Dependency, Realization, Delegation
+
+  1.6  UML Diagrams
+         - Sequence Diagrams (lifelines, sync/async messages, fragments)
+         - State Machine Diagrams (states, transitions, guards)
+         - Class Diagrams (relationships, multiplicities)
+
+  1.7  OOP in Java
+         - Interfaces vs Abstract Classes
+         - Java Records, Generics, Collections
+         - Thread-Safe Singleton (volatile + double-check)
+
+  1.8  OOP in Python
+         - Dunder methods, @property, @classmethod, @staticmethod
+         - ABC module, __slots__, Data Classes, MRO
+
+  1.9  LLD Interview Framework (6 Steps)
+         Step 1: Clarify Requirements
+         Step 2: Define Entities & Enums
+         Step 3: Define APIs / Interfaces
+         Step 4: Establish Relationships
+         Step 5: Apply Design Patterns
+         Step 6: Code with Concurrency & Edge Cases
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 2 — KEY CHARACTERISTICS OF DISTRIBUTED SYSTEMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2.1  Scalability
+         - Vertical (scale up) vs Horizontal (scale out)
+         - Amdahl's Law: max speedup = 1 / (s + (1-s)/N)
+         - Stateless services scale easily; stateful need session affinity
+
+  2.2  Availability
+         - SLA in "nines"; Series: A = A1 × A2; Parallel: 1 - (1-A1)(1-A2)
+         - Fail-Over: Active-Active (both serve traffic) vs Active-Passive (hot/warm/cold standby)
+         - Replication: Master-Slave, Multi-Master
+
+  2.3  Reliability & Fault Tolerance
+         - Fault = defect; Error = incorrect state; Failure = system stops
+         - Redundancy eliminates SPOFs
+         - Graceful degradation vs hard failure
+
+  2.4  Latency vs Throughput
+         - Latency: time for one request (ms)
+         - Throughput: requests handled per second (QPS / TPS)
+         - Little's Law: L = λ × W (queue depth = arrival rate × wait time)
+
+  2.5  Consistency Models (from strongest to weakest)
+         - Linearizability (strong): reads always see latest write
+         - Sequential Consistency: operations appear in some global order
+         - Causal Consistency: causally related ops seen in order
+         - Eventual Consistency: replicas converge given no new writes
+         - Weak Consistency: no guarantees
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 3 — NETWORKING & COMMUNICATION PROTOCOLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3.1  OSI Model (7 Layers)
+         L7 Application — HTTP, DNS, SMTP
+         L6 Presentation — TLS/SSL, encoding
+         L5 Session — session management
+         L4 Transport — TCP (reliable, ordered), UDP (fast, lossy)
+         L3 Network — IP routing, BGP, ICMP
+         L2 Data Link — Ethernet, MAC
+         L1 Physical — bits, cables, signals
+
+  3.2  TCP Internals
+         - 3-Way Handshake: SYN → SYN-ACK → ACK
+         - 4-Way Teardown: FIN → FIN-ACK → FIN → ACK
+         - Sliding Window (flow control), Congestion Control (AIMD)
+         - Head-of-line blocking in HTTP/1.1
+
+  3.3  UDP Internals
+         - No handshake, no ordering, no retransmission
+         - Used by: DNS, DHCP, video streaming, games, WebRTC
+
+  3.4  HTTP Versions
+         - HTTP/1.1: persistent connections, but HOL blocking
+         - HTTP/2: multiplexing streams over 1 TCP connection, header compression (HPACK)
+         - HTTP/3 (QUIC): UDP-based, eliminates TCP HOL blocking, 0-RTT reconnects
+
+  3.5  Application Protocols
+         - REST: stateless, resources as URLs, uses HTTP verbs
+         - GraphQL: single endpoint, client specifies shape, avoids over/under-fetching
+         - gRPC: Protocol Buffers (binary), HTTP/2, strongly typed, streaming
+         - WebSockets: upgrade from HTTP, full-duplex, persistent TCP connection
+         - SSE: unidirectional server→client push over HTTP, auto-reconnect
+         - WebRTC: P2P media, STUN/TURN for NAT traversal, ICE for path selection
+         - MQTT: pub/sub for IoT, lightweight, QoS levels 0/1/2
+
+  3.6  DNS Internals
+         - Recursive resolver → Root NS → TLD NS → Authoritative NS
+         - Record types: A (IPv4), AAAA (IPv6), CNAME, MX, TXT, NS
+         - TTL controls caching; low TTL = faster failover but more queries
+         - Anycast routing: same IP announced from multiple locations
+
+  3.7  API Design Best Practices
+         - REST: nouns in URLs, HTTP verbs, status codes, versioning
+         - Pagination: Cursor-based (no skip scan) > Offset-based
+         - Idempotency: GET, PUT, DELETE idempotent; POST not
+         - Idempotency Keys for retries in payments
+         - Rate limiting headers: X-RateLimit-Limit, X-RateLimit-Remaining
+         - HTTP Status Codes:
+             2XX: 200 OK, 201 Created, 202 Accepted, 204 No Content
+             3XX: 301 Moved Permanently, 302 Found, 304 Not Modified
+             4XX: 400 Bad Request, 401 Unauthorized, 403 Forbidden,
+                  404 Not Found, 409 Conflict, 422 Unprocessable, 429 Too Many Requests
+             5XX: 500 Internal Error, 502 Bad Gateway, 503 Unavailable, 504 Timeout
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 4 — LOAD BALANCING, PROXIES & CDN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4.1  Load Balancing Internals
+         - L4 (Transport LB): routes by IP+port, sees TCP/UDP packets only, faster
+         - L7 (Application LB): reads HTTP headers/cookies, can route by path/host
+         - Algorithms:
+             Round Robin: next server in rotation
+             Weighted Round Robin: more traffic to beefy servers
+             Least Connections: route to server with fewest active connections
+             IP Hash: hash(client_IP) % N → sticky sessions
+             Least Response Time: pick fastest server
+         - Health Checks: active (ping) + passive (watch error rates)
+         - Session Affinity (sticky sessions): stateful apps need same server
+
+  4.2  Reverse Proxy
+         - Sits in front of servers: hides topology, handles TLS termination
+         - Can do compression, caching, auth, rate limiting
+         - Tools: NGINX, HAProxy, Envoy, Traefik
+
+  4.3  CDN Internals
+         - PoPs (Points of Presence) at edge locations globally
+         - Pull CDN: cache miss → fetch from origin, cache for TTL
+         - Push CDN: pre-load content proactively (good for known heavy assets)
+         - Cache-Control headers: max-age, s-maxage, no-cache, no-store
+         - Edge Computing (Cloudflare Workers, Lambda@Edge): run code at PoP
+         - Cache invalidation: TTL expiry, API-based purge, versioned URLs
+
+  4.4  API Gateway
+         - Single entry point: routing, auth, rate limiting, SSL termination
+         - Can aggregate multiple microservice calls (BFF pattern)
+         - Tools: AWS API Gateway, Kong, NGINX, Envoy
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 5 — DATABASES & DATA MODELING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5.1  SQL / Relational Databases
+         Internal Storage Engine (InnoDB):
+           - Data stored in B+ Tree pages (16 KB default)
+           - Clustered index = primary key → leaf nodes hold full row
+           - Secondary indexes hold primary key value (not row pointer)
+           - Write-Ahead Log (WAL / redo log) for crash recovery
+           - Buffer pool: LRU-based in-memory page cache
+         ACID Properties:
+           - Atomicity: all-or-nothing (undo log for rollback)
+           - Consistency: constraints, triggers, foreign keys always valid
+           - Isolation: MVCC (Multi-Version Concurrency Control)
+             → each txn sees a snapshot; readers don't block writers
+           - Durability: WAL flushed to disk before commit ACK
+         Isolation Levels (from weakest to strongest):
+           - Read Uncommitted (dirty reads allowed)
+           - Read Committed (no dirty reads; non-repeatable reads possible)
+           - Repeatable Read (MySQL default; phantom reads possible)
+           - Serializable (strictest; full locking)
+         Concurrency Problems:
+           - Dirty Read, Non-Repeatable Read, Phantom Read, Lost Update
+         Schema Design:
+           - 1NF: atomic values, no repeating groups
+           - 2NF: no partial key dependencies
+           - 3NF: no transitive dependencies
+           - Denormalization: deliberate redundancy for read speed
+
+  5.2  NoSQL Databases (with Internals)
+
+     Key-Value Stores (Redis, DynamoDB):
+       - Hash table internally; O(1) average get/set
+       - DynamoDB: consistent hashing for partition routing
+         B-tree for range queries within partitions
+
+     Document Databases (MongoDB):
+       - BSON documents stored in WiredTiger engine (B-tree)
+       - Collections = tables; documents = rows (flexible schema)
+       - Aggregation pipeline for complex queries
+
+     Wide-Column (Cassandra):
+       - LSM Tree (Log-Structured Merge Tree) for writes:
+           Write → Memtable (RAM) → WAL → flush to SSTable on disk
+           Compaction merges SSTables periodically
+       - Partition key hashed to node; clustering key sorts within partition
+       - Tunable consistency: ANY / ONE / QUORUM / ALL
+       - No joins; denormalize for each query pattern
+
+     Graph Databases (Neo4j):
+       - Native graph storage: nodes, relationships, properties
+       - Index-free adjacency: each node stores direct pointer to neighbours
+       - O(1) relationship traversal regardless of graph size
+       - Cypher query language
+
+     Time-Series (InfluxDB, Prometheus, TimescaleDB):
+       - Data partitioned by time ranges (chunks)
+       - Compressed columnar storage for high write throughput
+       - Downsampling & retention policies
+       - Prometheus: pull model, scrapes metrics every 15s
+
+     Search Engines (Elasticsearch):
+       - Inverted Index: term → list of document IDs (posting list)
+       - TF-IDF / BM25 for relevance scoring
+       - Shards for scale; replicas for availability
+       - Near real-time: documents searchable ~1s after index
+
+     Vector Databases (Pinecone, Milvus, Weaviate):
+       - Store high-dimensional embeddings (from ML models)
+       - ANN (Approximate Nearest Neighbour): HNSW, IVF-PQ algorithms
+       - Used in: semantic search, recommendation, RAG for LLMs
+
+  5.3  SQL vs NoSQL Decision Guide
+         Use SQL when: complex joins, strong ACID, structured schema
+         Use NoSQL when: horizontal scale, flexible schema, high write throughput
+         Hybrid: use both (polyglot persistence)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHAPTER 6 — INDEXING & QUERY OPTIMIZATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6.1  B-Tree / B+ Tree Index Internals
+         - Balanced tree; leaf nodes linked as doubly linked list
+         - O(log N) search; range scans traverse leaf level only
+         - Page size typically 8-16 KB; depth ~3-4 for billions of rows
+         - Clustered Index: rows ordered physically by PK (InnoDB)
+         - Non-Clustered: separate structure; leaf holds PK → two lookups
+
+  6.2  LSM Tree (Log-Structured Merge Tree)
+         - Writes go to in-memory Memtable → periodic flush to SSTable
+         - SSTables are immutable; reads may search multiple SSTables
+         - Bloom Filters per SSTable to skip irrelevant reads
+         - Compaction: merges SSTables, removes tombstones
+         - Great for write-heavy workloads (Cassandra, RocksDB, LevelDB)
+
+  6.3  Hash Index
+         - O(1) exact match; cannot do range queries
+         - Risk of hash collisions (linear chaining or open addressing)
+         - Used in: Redis (in-memory), PostgreSQL Hash Index
+
+  6.4  Geospatial Indexes
+         - R-Tree: MBR (Minimum Bounding Rectangle) hierarchy
+         - PostGIS: ST_DWithin, ST_Intersects with spatial index
+         - GeoHash: encode lat/lng as Base32 string; prefix = proximity
+
+  6.5  Full-Text Search Index (Inverted Index)
+         - Tokenize → Normalize → Build term → doc_id posting list
+         - TF-IDF: Term Frequency × Inverse Document Frequency
+         - BM25 (Elasticsearch default): probabilistic relevance
+
+  6.6  Composite Index Rules
+         - Order matters: (a, b, c) — prefix usable for a, (a,b), (a,b,c)
+         - Put highest cardinality or most-filtered col first
+         - Covering index: index contains all queried columns (no table lookup)
+
+  6.7  Index Trade-offs
+         - Speeds reads; slows writes (must update index on INSERT/UPDATE/DELETE)
+         - Too many indexes → bloated storage, slow writes
+         - Partial Index: index only a subset (WHERE is_active = true)

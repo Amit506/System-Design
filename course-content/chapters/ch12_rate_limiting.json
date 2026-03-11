@@ -1,0 +1,107 @@
+{
+    "id": "ch12",
+    "title": "Rate Limiting",
+    "parent_id": null,
+    "order": 12,
+    "tags": [
+        "rate-limiting",
+        "token-bucket",
+        "leaky-bucket",
+        "sliding-window",
+        "API-gateway"
+    ],
+    "summary": "Rate limiting algorithms with internals — Token Bucket, Leaky Bucket, Fixed/Sliding Window — distributed rate limiting, and response headers.",
+    "explanation": {
+        "overview": "Rate limiting controls the number of requests a client can make in a time window. It protects your system from abuse (DDoS), ensures fair usage among clients, prevents resource exhaustion, and enforces billing tiers. Every production API has rate limiting — typically implemented at the API Gateway or Load Balancer layer."
+    },
+    "children": [
+        {
+            "id": "ch12.s01",
+            "title": "Rate Limiting Algorithms — Internals",
+            "parent_id": "ch12",
+            "order": 1,
+            "tags": [
+                "token-bucket",
+                "leaky-bucket",
+                "fixed-window",
+                "sliding-window"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Token Bucket",
+                        "definition": "INTERNAL: A bucket holds up to C tokens (capacity). Tokens are added at rate R per second. Each request consumes 1 token. If bucket is empty, request is rejected (429 Too Many Requests). IMPLEMENTATION: don't run a timer to add tokens. Instead, compute tokens lazily: on each request, calculate tokens_available = min(C, stored_tokens + R × (now - last_refill_time)). If tokens_available >= 1, allow and decrement. Store: {tokens: float, last_refill: timestamp}. In Redis: two keys per client (tokens + last_refill), updated atomically with a Lua script. BEHAVIOR: allows bursts up to C tokens, then sustains at rate R. Example: C=10, R=2/sec. A client can burst 10 requests instantly, then 2/sec thereafter. CONFIGURABLE: C controls burst size. R controls sustained rate. Different buckets for different endpoints (/api = 100/min, /search = 20/min). USED BY: AWS API Gateway, Stripe, GitHub API."
+                    },
+                    {
+                        "term": "Leaky Bucket",
+                        "definition": "INTERNAL: requests enter a queue (bucket). The queue drains at a fixed rate R. If the queue is full (capacity C), new requests are dropped. Unlike token bucket, leaky bucket smooths output — no bursts. Output rate is always exactly R, regardless of how bursty the input is. IMPLEMENTATION: use a FIFO queue. A scheduler dequeues and processes at rate R. If queue.size >= C, reject. USE WHEN: you need a perfectly smooth request rate (bandwidth shaping, network traffic policing)."
+                    },
+                    {
+                        "term": "Fixed Window Counter",
+                        "definition": "INTERNAL: divide time into fixed windows (60-second intervals). Each window has a counter starting at 0. Each request increments the counter. If counter > limit, reject. At window boundary, counter resets. IMPLEMENTATION (Redis): key = rate_limit:{client_id}:{window_start}. INCR key, EXPIRE key 60. Very simple, O(1) per request. PROBLEM: boundary burst — a client can send limit requests at 00:59 and limit requests at 01:00, effectively getting 2× limit in a 1-second window. FIX: sliding window."
+                    },
+                    {
+                        "term": "Sliding Window Log",
+                        "definition": "INTERNAL: store the timestamp of every request in a sorted set (Redis ZADD). On each request: remove entries older than window_size ago (ZREMRANGEBYSCORE), count remaining entries (ZCARD), if count < limit, add current timestamp (ZADD). ACCURATE: no boundary issues. EXPENSIVE: stores one entry per request. 1000 requests/minute × 1M users = 1B entries. Too much memory. USE: when accuracy matters and traffic is low."
+                    },
+                    {
+                        "term": "Sliding Window Counter (Hybrid)",
+                        "definition": "INTERNAL: combines fixed window with weighted averaging. Keep counters for current window and previous window. Estimated count = prev_window_count × overlap_percentage + curr_window_count. Example: 60-second windows. We're 15 seconds into the current window. Previous window had 45 requests. Current window has 18 requests. Estimated rate = 45 × (45/60) + 18 = 45 × 0.75 + 18 = 33.75 + 18 = 51.75. If limit is 60, allow. IMPLEMENTATION: just two counters (2 Redis keys per client). O(1) memory. Error < 0.003% in practice. USED BY: Cloudflare for their rate limiting. This is the industry-standard algorithm — simple, memory-efficient, and accurate enough."
+                    }
+                ]
+            },
+            "advanced_tweaks": [
+                {
+                    "technique": "Rate limit by multiple dimensions",
+                    "when_to_use": "Defense in depth",
+                    "how": "Rate limit by: IP address (100 req/min per IP), API key (1000 req/min per key), user ID (50 req/min per user), endpoint (/login has stricter limit). A single request must pass ALL rate limits."
+                },
+                {
+                    "technique": "Graduated response",
+                    "when_to_use": "Better UX",
+                    "how": "Instead of hard blocking at limit, degrade gradually: 0-80% of limit = full speed. 80-100% = add artificial delay (100-500ms). 100%+ = return 429. This gives the client a chance to back off before being hard-blocked."
+                }
+            ],
+            "children": []
+        },
+        {
+            "id": "ch12.s02",
+            "title": "Distributed Rate Limiting",
+            "parent_id": "ch12",
+            "order": 2,
+            "tags": [
+                "distributed",
+                "redis",
+                "local-counter",
+                "consistency"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Centralized (Redis)",
+                        "definition": "All rate limit state in Redis. Every request checks Redis via Lua script (atomic INCR + EXPIRE). PROS: accurate (single source of truth, no over-allowance). CONS: Redis is a SPOF for rate limiting (if Redis is down, do you allow all or deny all?). Added latency (~0.5ms per request). FIX for SPOF: fail open (allow all requests if Redis is down) for most APIs. Fail closed (block all) for critical endpoints (payment, login)."
+                    },
+                    {
+                        "term": "Local Counters + Periodic Sync",
+                        "definition": "Each app server maintains local rate limit counters. Periodically sync with central store (every 1-5 seconds). Between syncs, each server allows limit/num_servers requests. PROS: no single point of failure, no per-request latency to Redis. CONS: allows slight over-limit (up to num_servers × overage_per_server). Acceptable for most use cases — rate limits are soft boundaries."
+                    },
+                    {
+                        "term": "Response Headers",
+                        "definition": "Always return rate limit info in response headers: X-RateLimit-Limit: 100 (max requests per window), X-RateLimit-Remaining: 42 (requests left in current window), X-RateLimit-Reset: 1710456789 (Unix timestamp when window resets), Retry-After: 30 (seconds to wait, included with 429 response)."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Rate Limiting in System Design — Alex Xu",
+            "url": "https://www.amazon.com/System-Design-Interview-insiders-Second/dp/B08CMF2CQF"
+        },
+        {
+            "title": "Cloudflare Rate Limiting",
+            "url": "https://blog.cloudflare.com/counting-things-a-lot-of-different-things/"
+        }
+    ]
+}

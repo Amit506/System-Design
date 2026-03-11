@@ -1,0 +1,555 @@
+{
+    "id": "ch00",
+    "title": "Introduction & How to Approach System Design",
+    "parent_id": null,
+    "order": 0,
+    "tags": [
+        "introduction",
+        "interview-prep",
+        "framework",
+        "estimation"
+    ],
+    "summary": "Foundation chapter covering what system design is, interview types, the 6-step delivery framework, back-of-the-envelope estimation, and the numbers every engineer must memorize.",
+    "explanation": {
+        "overview": "System design is the process of defining the architecture, components, modules, interfaces, and data flow of a system to satisfy specified requirements. In interviews, you're evaluated on your ability to break down ambiguous problems, make well-reasoned trade-off decisions, and communicate clearly. There is no single right answer — the process and reasoning matter more than the final diagram.",
+        "how_it_works_internally": "A system design interview typically runs 45-60 minutes. The interviewer starts with an open-ended prompt like 'Design Twitter' or 'Design a distributed rate limiter'. You must drive the conversation — the interviewer acts as a product manager you're collaborating with. You are scored on four axes: (1) Problem Exploration — did you ask the right clarifying questions and scope the problem correctly? (2) Technical Breadth — can you draw a complete, coherent high-level architecture? (3) Technical Depth — can you dive deep into 2-3 components and discuss internals, edge cases, trade-offs? (4) Communication — did you structure your thoughts, explain trade-offs, and adapt to interviewer signals?"
+    },
+    "children": [
+        {
+            "id": "ch00.s01",
+            "title": "What is System Design?",
+            "parent_id": "ch00",
+            "order": 1,
+            "tags": [
+                "definition",
+                "HLD",
+                "LLD"
+            ],
+            "summary": "System design is the art of defining how software components interact to fulfil functional and non-functional requirements at scale.",
+            "explanation": {
+                "overview": "System design sits at the intersection of software engineering and infrastructure engineering. You decompose a large problem into smaller components (services, databases, caches, queues), define clear interfaces between them (REST APIs, event contracts), choose the right technologies for each component, and reason about how the system behaves under load, failure, and growth.",
+                "how_it_works_internally": "Internally, every large-scale system follows the same fundamental pattern: requests arrive from clients, pass through layers of routing and processing, interact with storage systems, and return responses. The challenge is making this work for millions of users simultaneously while keeping latency low, availability high, data consistent, and costs reasonable. The design process is about finding the right balance between these competing forces.",
+                "key_concepts": [
+                    {
+                        "term": "Functional Requirements (FR)",
+                        "definition": "What the system must DO. These are user-facing features. Examples: 'Users can post tweets up to 280 characters', 'Users can follow other users', 'Users can view a chronological feed of posts from people they follow'. Each FR drives at least one API endpoint and one data flow in your architecture. Always enumerate exactly 3-5 FRs during an interview — too few means you missed scope, too many means you'll run out of time."
+                    },
+                    {
+                        "term": "Non-Functional Requirements (NFR)",
+                        "definition": "HOW the system must behave. These are quality attributes. Key NFRs to always consider: Availability (what SLA? 99.9% = 8.7 hrs downtime/year), Latency (p99 target? < 200ms for user-facing), Scalability (how many users/requests? 100M DAU?), Consistency (strong or eventual? financial = strong, social feed = eventual), Durability (can we lose data? payments = never, logs = acceptable), Security (PCI compliance? E2E encryption?). Pick the top 2-3 most critical NFRs and state them explicitly."
+                    },
+                    {
+                        "term": "High-Level Design (HLD)",
+                        "definition": "A box-and-arrow architecture diagram showing major components and data flow between them. Typical boxes: Client, CDN, Load Balancer, API Gateway, Application Servers, Cache (Redis), Database (Postgres/Cassandra), Message Queue (Kafka), Worker Services, Blob Storage (S3). Each arrow should be labelled with the protocol/API call. The HLD must satisfy every functional requirement — trace each FR through the diagram."
+                    },
+                    {
+                        "term": "Low-Level Design (LLD)",
+                        "definition": "Detailed design of a single component: class diagrams, database schemas, specific algorithm choices, API request/response formats, state machines. In an SD interview, LLD shows up in deep dives — for example, designing the exact database schema for a URL shortener, or the leader-election algorithm in a distributed cache. In dedicated LLD interviews, you design the internals of a single system like a parking lot or elevator."
+                    },
+                    {
+                        "term": "Trade-offs",
+                        "definition": "Every design decision involves trade-offs. The hallmark of a strong candidate is explicitly stating trade-offs rather than just picking a technology. Example: 'I'm choosing Cassandra over PostgreSQL because we have a write-heavy workload (500K writes/sec). The trade-off is we lose JOIN support and strong consistency, but our access patterns don't require joins and eventual consistency is acceptable for a social feed.' Always use the pattern: 'I chose X because [reason]. The trade-off is [downside], which is acceptable because [justification].'"
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "FR/NFR Scoping Example — Design Twitter",
+                        "description": "Functional Requirements: (1) Users can post tweets (text, up to 280 chars, optionally with images). (2) Users can follow/unfollow other users. (3) Users can view their home timeline — a feed of recent tweets from people they follow, in reverse chronological order. Non-Functional Requirements: (1) Highly available — 99.99% uptime (< 52 min downtime/year). (2) Read-heavy — 10:1 read:write ratio (most users browse, few post). (3) Low latency — feed loads in < 200ms p99. (4) Eventual consistency is acceptable — a new tweet can take up to 5 seconds to appear in followers' feeds. (5) Scale target: 500M users, 200M DAU, ~10K tweets/sec average.",
+                        "code": ""
+                    }
+                ]
+            },
+            "common_mistakes": [
+                "Not asking clarifying questions and assuming scope — always confirm: mobile vs web? global or single region? real-time or batch?",
+                "Listing too many functional requirements (>5) — you won't have time. Focus on the core features that drive the architecture.",
+                "Ignoring non-functional requirements — scale/latency targets fundamentally change the architecture (a system for 1K users is completely different from one for 100M users).",
+                "Jumping to technology choices before understanding requirements — 'let's use Kafka!' without knowing if you need async processing."
+            ],
+            "children": []
+        },
+        {
+            "id": "ch00.s02",
+            "title": "Types of System Design Interviews",
+            "parent_id": "ch00",
+            "order": 2,
+            "tags": [
+                "interview",
+                "types",
+                "product",
+                "infrastructure",
+                "ML"
+            ],
+            "summary": "Three main types of system design interviews, each requiring different focus areas and evaluation criteria.",
+            "explanation": {
+                "overview": "Not all system design interviews are the same. The type determines what the interviewer focuses on and what signals they're looking for.",
+                "key_concepts": [
+                    {
+                        "term": "Product System Design",
+                        "definition": "The most common type. You design a user-facing product like Twitter, Uber, WhatsApp, or Instagram. Focus areas: (1) Understanding user flows and translating them into API endpoints. (2) Designing data models that support the access patterns. (3) Choosing the right storage (SQL vs NoSQL) based on data relationships and scale. (4) Fan-out strategies for feeds and notifications. (5) Real-time features (WebSockets for chat, SSE for live comments). The interviewer evaluates whether your architecture correctly implements all FRs and handles the stated scale. Edge cases: celebrity problem (user with 100M followers), hot partitions, thundering herds."
+                    },
+                    {
+                        "term": "Infrastructure System Design",
+                        "definition": "You design a foundational building block used by other systems: a distributed rate limiter, distributed cache, job scheduler, key-value store, or message queue. Focus areas: (1) Distributed systems fundamentals — consensus, replication, partitioning. (2) Failure handling — what happens when a node crashes? Network partition? (3) Consistency guarantees — is this CP or AP? (4) Internal algorithms — hash ring for consistent hashing, skip lists for sorted sets, LSM trees for write-heavy stores. The interviewer goes much deeper on internals here. They expect you to discuss Raft/Paxos, quorum reads/writes, and failure modes."
+                    },
+                    {
+                        "term": "ML System Design",
+                        "definition": "You design a system that involves machine learning: recommendation engine, ad ranking, spam detection, search ranking. Focus areas: (1) Data pipeline — how do you collect, clean, and store training data? (2) Feature engineering — what signals predict the outcome? (3) Model architecture — collaborative filtering, two-tower model, transformer. (4) Model serving — online inference latency, batching, GPU allocation. (5) A/B testing and feedback loops. The interviewer evaluates whether you understand the end-to-end ML lifecycle, not just the model."
+                    }
+                ]
+            },
+            "advanced_tweaks": [
+                {
+                    "technique": "Ask which type early",
+                    "when_to_use": "If the prompt is ambiguous, e.g., 'Design a search system'",
+                    "how": "Ask: 'Would you like me to focus on the user-facing product design (search UI, ranking, suggestions) or the infrastructure side (building the inverted index, distributed crawling, query parsing)?' This shows maturity and lets the interviewer steer you toward what they're evaluating."
+                },
+                {
+                    "technique": "Tailor depth to interview type",
+                    "when_to_use": "Always",
+                    "how": "Product SD: spend 60% on HLD and API design. Infrastructure SD: spend 60% on deep dives and internals. ML SD: spend time on data pipeline and model serving, not just the model itself."
+                }
+            ],
+            "children": []
+        },
+        {
+            "id": "ch00.s03",
+            "title": "Interview Delivery Framework (6 Steps)",
+            "parent_id": "ch00",
+            "order": 3,
+            "tags": [
+                "framework",
+                "delivery",
+                "time-management"
+            ],
+            "summary": "A battle-tested 6-step structure to deliver a system design interview within 45 minutes, ensuring you cover requirements, API, architecture, and deep dives.",
+            "explanation": {
+                "overview": "This framework provides a repeatable structure so you never freeze or wander aimlessly. It forces you to move from abstract (requirements) to concrete (architecture), then zoom into the hardest parts (deep dives). The specific time allocations are guidelines — adapt based on interview length and interviewer signals.",
+                "how_it_works_internally": "The framework mirrors how senior engineers actually design systems in industry: start with a problem statement (PRD), define requirements, scope an MVP, design the architecture, then iterate on bottlenecks. The interview compresses weeks of work into 45 minutes, so you must be ruthlessly efficient.",
+                "step_by_step": [
+                    {
+                        "step": 1,
+                        "title": "Clarify Requirements (~5 min)",
+                        "detail": "This is the most underrated step. Bad candidates skip it and jump into drawing boxes. Great candidates ask precise questions that reveal hidden complexity. Questions to ask: 'What is the expected scale? DAU? Reads vs writes ratio?' 'Do we need real-time updates or is eventual consistency OK?' 'What's the geographic distribution? Single region or global?' 'What are the SLA targets? Availability? Latency p99?' 'Are there any hard constraints — regulatory (GDPR), compliance (PCI), cost budget?' EDGE CASE: If the interviewer says 'you decide', make a reasonable assumption, state it explicitly ('I'll assume 100M DAU, read-heavy 10:1'), and move on. This shows you can make decisions under ambiguity. OUTPUT: Write down ~3-5 functional requirements and ~2-3 non-functional requirements on the whiteboard/doc."
+                    },
+                    {
+                        "step": 2,
+                        "title": "Core Entities (~2 min)",
+                        "detail": "Extract the core nouns from your requirements. These become your database tables or document collections. Example for Twitter: User, Tweet, Follow (relationship), Timeline, Media. Keep it simple — 4-6 entities max. Don't design the full schema yet, just list the entities. This step grounds the conversation before you start drawing architecture boxes."
+                    },
+                    {
+                        "step": 3,
+                        "title": "API Design (~5 min)",
+                        "detail": "Define the key API endpoints that implement your functional requirements. Use REST or describe event interfaces for async systems. For each endpoint: HTTP method, path, request body, response body, status codes. Example: POST /api/v1/tweets — body: {user_id, content, media_ids[]} — response: 201 {tweet_id, created_at}. GET /api/v1/feed?user_id=X&cursor=abc&limit=20 — response: 200 {tweets[], next_cursor}. INDUSTRY TWEAK: Always use cursor-based pagination (not offset) — offsets break when new items are inserted. EDGE CASE: For write-heavy systems (payments), include an idempotency_key header to prevent duplicate processing on retries."
+                    },
+                    {
+                        "step": 4,
+                        "title": "[Optional] Data Flow (~5 min)",
+                        "detail": "For pipeline or data-processing systems (web crawler, ad click aggregator, metrics monitoring), trace the data journey: Ingestion → Processing → Storage → Serving. This replaces or supplements the API step because these systems are event-driven rather than request-driven. Example for Ad Click Aggregator: Click event → Kafka topic → Flink stream processor (aggregate by ad_id + time window) → write aggregated counts to OLAP DB (ClickHouse) → query API reads from OLAP DB."
+                    },
+                    {
+                        "step": 5,
+                        "title": "High-Level Design (~10-15 min)",
+                        "detail": "This is the main event. Draw the architecture box-by-box, satisfying each functional requirement. Standard components to consider: DNS → CDN (static assets, edge caching) → Load Balancer (L7, health checks) → API Gateway (auth, rate limiting, routing) → Application Servers (stateless, horizontally scaled) → Cache (Redis — for hot reads, sessions, rate limit counters) → Primary Database (Postgres for relational, Cassandra for write-heavy) → Blob Storage (S3 for media, files) → Message Queue (Kafka for async processing, event streaming) → Worker Services (background jobs, notifications, email). For each FR, trace the flow through the diagram: 'When a user posts a tweet, the request hits the LB → API Server → writes to Postgres → publishes event to Kafka → Fan-out workers consume the event and push the tweet to each follower's cached timeline in Redis.' INDUSTRY STANDARD: Make services stateless. Store all state in databases/caches. This enables horizontal scaling and zero-downtime deploys."
+                    },
+                    {
+                        "step": 6,
+                        "title": "Deep Dives (~10 min)",
+                        "detail": "Pick 2-3 areas that are most interesting, most challenging, or that the interviewer hints at. Use the Bad → Good → Great pattern to show trade-off reasoning. Examples of deep dives: (1) 'How do we handle the celebrity problem in feed generation?' Bad: fan-out on write to all 100M followers → massive write amplification. Good: fan-out on write for normal users, fan-out on read for celebrities (hybrid approach). Great: hybrid + pre-computed celebrity feeds cached at CDN edge. (2) 'How do we ensure exactly-once payment processing?' Bad: retry without dedup → double charges. Good: idempotency key stored in DB → reject duplicate requests. Great: idempotency key + transactional outbox pattern → guarantee event published if payment succeeds. EDGE CASES to discuss in deep dives: What happens during network partitions? What if a database node goes down mid-write? How do we handle a sudden 10× traffic spike (viral event)? What if the cache goes down (thundering herd)?"
+                    }
+                ]
+            },
+            "configurable_params": [
+                {
+                    "name": "Interview duration",
+                    "default": "45 minutes",
+                    "effect": "Shorter interviews (35 min) → compress requirements to 3 min, HLD to 10 min, 1 deep dive. Longer (60 min) → can do 3-4 deep dives.",
+                    "tradeoff": "More time on HLD means more complete architecture but less impressive depth. Senior/Staff interviewers care more about depth."
+                },
+                {
+                    "name": "Number of FRs",
+                    "default": "3-5",
+                    "effect": "Fewer FRs means simpler HLD and more time for depth. More FRs means broader system but shallow treatment.",
+                    "tradeoff": "Always confirm with interviewer: 'I've identified these 4 requirements — shall I add more or is this the right scope?'"
+                },
+                {
+                    "name": "Number of deep dives",
+                    "default": "2-3",
+                    "effect": "Each deep dive takes 3-5 minutes. Going deep on one topic is better than shallow on four.",
+                    "tradeoff": "Let the interviewer guide which deep dive matters most — if they keep asking about consistency, dive into consensus."
+                }
+            ],
+            "advanced_tweaks": [
+                {
+                    "technique": "Lead with the hardest problem (architectural driver)",
+                    "when_to_use": "When one requirement dominates the architecture",
+                    "how": "In Google Docs, the core challenge is real-time collaborative editing with conflict resolution. Lead with CRDT/OT in your HLD rather than treating it as a deep dive. This shows you immediately see what makes this problem hard."
+                },
+                {
+                    "technique": "Bad → Good → Great pattern",
+                    "when_to_use": "Every deep dive",
+                    "how": "Present a naive solution (polling every 1 second), explain why it fails at scale (1M clients × 1 req/sec = 1M QPS), propose a better approach (long polling — fewer requests), then the best approach (WebSocket — persistent connection, server-pushed updates, ~10K connections per server). This demonstrates trade-off reasoning, which is the #1 signal interviewers look for."
+                },
+                {
+                    "technique": "Proactively mention failure modes",
+                    "when_to_use": "During HLD and deep dives",
+                    "how": "For every component, briefly mention: 'If the cache goes down, we fall back to the DB with increased latency. We'd also see a cache stampede — to mitigate, we use mutex-based single-flight cache population.' This shows you think about production reality, not just happy path."
+                },
+                {
+                    "technique": "Draw before you talk",
+                    "when_to_use": "During HLD step",
+                    "how": "Sketch the boxes and arrows first (takes 1-2 minutes), THEN walk through it. This is faster than explaining while drawing and produces a cleaner diagram. Label every arrow with the protocol (HTTP, gRPC, async/Kafka)."
+                }
+            ],
+            "common_mistakes": [
+                "Spending 15+ minutes on requirements — implies you can't scope problems efficiently.",
+                "Drawing a monolithic architecture first and then 'adding microservices' — start with a reasonable modular design.",
+                "Not labelling arrows — arrows without labels (HTTP? gRPC? async Kafka event?) are meaningless.",
+                "Ignoring interviewer hints — if they ask 'what happens when X fails?' three times, that IS the deep dive they want.",
+                "Using technologies you can't explain — if you put Kafka in the diagram, you must be able to discuss partitions, consumer groups, and offset management.",
+                "Designing for 100M users when the requirement is 100 users — always let NFRs drive complexity."
+            ],
+            "interview_tips": [
+                {
+                    "q": "What if the interviewer interrupts and redirects?",
+                    "a": "This is a GOOD sign. It means they've seen enough of your current section and want to explore a specific area. Follow their lead — they know what they're evaluating. Say: 'Great question, let me dive into that.' Don't resist or say 'I'll get to that later.'"
+                },
+                {
+                    "q": "What if I don't know a specific technology?",
+                    "a": "Describe what you NEED (a distributed log that preserves ordering, supports consumer groups, and handles 100K events/sec) rather than naming a technology. If pressed, say: 'I'd use a system like Kafka or Pulsar for this — the key properties I need are ordered partitions and consumer group semantics.' This shows you understand the requirements even if you can't name every product."
+                },
+                {
+                    "q": "Should I write code during system design?",
+                    "a": "Rarely. Only if the interviewer asks, or if a specific algorithm (consistent hashing, LRU cache) is the core of the problem. Most interviewers want architecture diagrams and verbal explanations, not code."
+                }
+            ],
+            "diagram": {
+                "type": "mermaid",
+                "title": "6-Step Interview Delivery Framework",
+                "description": "Visual flow showing the progression from requirements to deep dives with approximate time allocations for a 45-minute interview.",
+                "data": {
+                    "mermaid_source": "graph LR\n  A[\"1. Requirements\\n~5 min\"] --> B[\"2. Core Entities\\n~2 min\"]\n  B --> C[\"3. API Design\\n~5 min\"]\n  C --> D[\"4. Data Flow\\n~5 min (optional)\"]\n  D --> E[\"5. High-Level Design\\n~10-15 min\"]\n  E --> F[\"6. Deep Dives\\n~10 min\"]\n  style A fill:#4CAF50,color:white\n  style F fill:#FF5722,color:white"
+                }
+            },
+            "children": []
+        },
+        {
+            "id": "ch00.s04",
+            "title": "Back-of-the-Envelope Estimation",
+            "parent_id": "ch00",
+            "order": 4,
+            "tags": [
+                "estimation",
+                "math",
+                "capacity-planning",
+                "QPS",
+                "storage"
+            ],
+            "summary": "Quick math techniques to estimate QPS, storage, bandwidth, and memory requirements for any system within 2-3 minutes.",
+            "explanation": {
+                "overview": "Capacity estimation proves your design is grounded in reality. Rather than guessing, you derive technical requirements from business numbers. Interviewers expect rough order-of-magnitude accuracy (within 2-5×), not exact precision.",
+                "how_it_works_internally": "The process always starts from a business metric (DAU, monthly uploads, messages/day) and converts it to infrastructure metrics (QPS, storage/year, bandwidth, server count). You then use these numbers to justify architectural decisions: 'We need 50K QPS reads — a single Postgres instance handles ~10K QPS, so we need read replicas or a cache layer.'",
+                "step_by_step": [
+                    {
+                        "step": 1,
+                        "title": "Estimate QPS from DAU",
+                        "detail": "QPS = DAU × actions_per_user_per_day ÷ 86,400 seconds. Round 86,400 to ~100,000 for quick math. Peak QPS = 2× to 5× average (use 3× as default). EXAMPLE: Twitter — 200M DAU, each user reads ~100 tweets/day and writes ~0.5 tweets/day. Read QPS = 200M × 100 / 100,000 = 200,000 QPS average → 600K peak. Write QPS = 200M × 0.5 / 100,000 = 1,000 QPS average → 3K peak. INSIGHT: This is a 200:1 read-heavy system → caching and read replicas are critical; write bottleneck is not the main concern."
+                    },
+                    {
+                        "step": 2,
+                        "title": "Estimate Storage",
+                        "detail": "Storage/year = writes_per_day × object_size × 365 × replication_factor. First estimate object size: a tweet = tweet_id (8B) + user_id (8B) + content (280 chars = 560B with UTF-16) + timestamp (8B) + metadata (100B) ≈ 700 bytes, round to 1 KB. Storage = 100M tweets/day × 1 KB × 365 = 36.5 TB/year × 3 replicas = ~110 TB/year. Add blob storage separately: if 10% of tweets have images (~500 KB each) → 10M × 500 KB = 5 TB/day = 1.8 PB/year. INSIGHT: Media storage dominates by 10×. Use a separate blob store (S3) for media — never store blobs in your relational database."
+                    },
+                    {
+                        "step": 3,
+                        "title": "Estimate Bandwidth",
+                        "detail": "Incoming bandwidth = write_QPS × avg_write_size. Outgoing bandwidth = read_QPS × avg_response_size. EXAMPLE: Read bandwidth = 200K QPS × 10 KB (response with 20 tweets) = 2 GB/s ≈ 16 Gbps outbound. Write bandwidth = 1K QPS × 1 KB = 1 MB/s (negligible). INSIGHT: 16 Gbps outbound is significant — use a CDN to serve media and cache hot feeds at the edge. A single server with 10 Gbps NIC handles ~1.25 GB/s, so you'd need ~2 servers just for network bandwidth, but with CDN offload this drops dramatically."
+                    },
+                    {
+                        "step": 4,
+                        "title": "Estimate Cache Size (80/20 Rule)",
+                        "detail": "Cache the top 20% hottest data. Daily unique reads = read_QPS × 86,400 (but with Zipf distribution, ~20% of items serve 80% of reads). Cache size = 0.2 × total_daily_unique_items × item_size. EXAMPLE: 200M unique feed requests/day, each feed = 10 KB. Cache = 0.2 × 200M × 10 KB = 400 GB. A single Redis instance handles ~25-100 GB of RAM → need Redis Cluster with 4-16 shards. EDGE CASE: Hot items (viral tweets) may need extra replication across cache nodes to avoid single-node hotspots."
+                    },
+                    {
+                        "step": 5,
+                        "title": "Estimate Server Count",
+                        "detail": "Servers = peak_QPS ÷ QPS_per_server. A typical web server handles 1K-10K QPS depending on workload (CPU-heavy vs I/O-heavy). EXAMPLE: 600K peak QPS ÷ 5K QPS/server = 120 application servers. Add 50% headroom = ~180 servers. INSIGHT: Cloud auto-scaling handles this dynamically — you don't provision all 180 at once. Set min=50, desired=120, max=250 with CPU-based auto-scaling."
+                    }
+                ],
+                "key_concepts": [
+                    {
+                        "term": "Order of Magnitude",
+                        "definition": "In estimation, you care about whether something is 100 GB or 100 TB, not whether it's 87 GB or 113 GB. Being within 2-5× is 'accurate enough' for system design."
+                    },
+                    {
+                        "term": "Zipf's Law",
+                        "definition": "In most systems, a small fraction of items receive a disproportionate share of traffic. The most popular 1% of URLs get 90% of hits. This justifies caching — a small cache has a high hit rate."
+                    },
+                    {
+                        "term": "Replication Factor",
+                        "definition": "Multiply storage by the number of copies: typically 3 for databases (primary + 2 replicas), 3 for Kafka, 3 for HDFS. This is for durability — losing one copy doesn't lose data."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Full Estimation: Design a URL Shortener",
+                        "description": "Assumptions: 100M new URLs/month, 10:1 read:write ratio (1B reads/month), URLs stored for 5 years, each record ~500 bytes. Write QPS: 100M / (30 × 86,400) ≈ 40 QPS (low — no scaling concern for writes). Read QPS: 1B / (30 × 86,400) ≈ 400 QPS average → 1,200 QPS peak (single server can handle this). Total storage: 100M URLs/month × 12 months × 5 years × 500 bytes × 3 replicas = 100M × 60 × 500 × 3 = 90 TB over 5 years. Cache: top 20% of daily reads × URL record size. 1B reads/month = ~33M/day. Cache 20% = 6.6M × 500B = ~3.3 GB → easily fits in a single Redis instance. Conclusion: This is a small-scale system. Single server + single DB + small Redis cache. The hard problem isn't scale — it's ensuring unique short URLs.",
+                        "code": ""
+                    }
+                ]
+            },
+            "common_mistakes": [
+                "Over-engineering a small system — if estimation shows 40 QPS, you don't need Kafka, Kubernetes, and a distributed cache. A single server with Postgres is fine.",
+                "Forgetting replication factor — raw storage × 3 is a big difference (30 TB vs 90 TB).",
+                "Using exact numbers — don't waste time computing 87,329 QPS. Round to 90K. Precision is not the goal.",
+                "Not using the estimates — if you calculate 600K QPS and then draw a single database with no caching, your design contradicts your own math."
+            ],
+            "children": [
+                {
+                    "id": "ch00.s04.numbers",
+                    "title": "Numbers Every Engineer Must Know",
+                    "parent_id": "ch00.s04",
+                    "order": 1,
+                    "tags": [
+                        "latency",
+                        "throughput",
+                        "hardware",
+                        "memorize"
+                    ],
+                    "summary": "Essential latency and throughput numbers that help you quickly evaluate whether a design is feasible without benchmarking.",
+                    "explanation": {
+                        "overview": "These numbers (originally from Jeff Dean at Google) give you an intuitive sense of how fast different operations are. When someone proposes 'just read from disk on every request', you instantly know that's ~10ms per read (HDD) and can't sustain 50K QPS on a single server. These numbers don't change much over time — orders of magnitude stay stable even as hardware improves.",
+                        "key_concepts": [
+                            {
+                                "term": "L1 cache reference",
+                                "definition": "~1 ns. This is the fastest memory access — data already in the CPU's closest cache. Your hot loop variables live here."
+                            },
+                            {
+                                "term": "L2 cache reference",
+                                "definition": "~4 ns. CPU's second-level cache. Larger (256 KB - 1 MB) but slower."
+                            },
+                            {
+                                "term": "Main memory (RAM) reference",
+                                "definition": "~100 ns. Random access to any byte in RAM. Redis operates entirely at this speed, which is why it's so fast."
+                            },
+                            {
+                                "term": "SSD random read",
+                                "definition": "~100 µs (100,000 ns). 1,000× slower than RAM. But SSDs can do ~100K IOPS randomly. For sequential reads, SSDs deliver ~500 MB/s to 3 GB/s (NVMe)."
+                            },
+                            {
+                                "term": "HDD seek + read",
+                                "definition": "~10 ms (10,000,000 ns). 100× slower than SSD. Mechanical head must physically move. Sequential reads are ~100-200 MB/s. Avoid random reads on HDD at all costs."
+                            },
+                            {
+                                "term": "Network round trip (same datacenter)",
+                                "definition": "~0.5 ms. This is why microservices in the same DC communicate fast. But 10 chained calls = 5ms — design for few hops."
+                            },
+                            {
+                                "term": "Network round trip (same continent)",
+                                "definition": "~30-50 ms. Speed of light through fiber + router hops. This is why CDNs and regional replicas matter."
+                            },
+                            {
+                                "term": "Network round trip (cross-continent)",
+                                "definition": "~100-200 ms. US to Europe ~100ms, US to Australia ~200ms. Users feel >100ms as 'sluggish'. This is why you need multi-region deployments for global apps."
+                            },
+                            {
+                                "term": "Read 1 MB from memory",
+                                "definition": "~0.25 ms. Memory throughput is ~4-10 GB/s per channel."
+                            },
+                            {
+                                "term": "Read 1 MB sequentially from SSD",
+                                "definition": "~1 ms. NVMe SSDs can sustain ~3 GB/s sequential."
+                            },
+                            {
+                                "term": "Read 1 MB sequentially from HDD",
+                                "definition": "~20 ms. Only ~50-100 MB/s sequential on spinning disks."
+                            },
+                            {
+                                "term": "Redis single-instance throughput",
+                                "definition": "~100K-200K ops/sec for simple GET/SET (single-threaded, in-memory, no disk I/O per operation). Pipeline mode can push to 1M ops/sec."
+                            },
+                            {
+                                "term": "PostgreSQL throughput",
+                                "definition": "~5K-50K TPS depending on query complexity, indexing, and hardware. Simple key-value lookups on indexed columns: ~50K. Complex joins with sorting: ~1-5K."
+                            },
+                            {
+                                "term": "Kafka throughput (per broker)",
+                                "definition": "~100K-500K messages/sec depending on message size. With small messages (~100 bytes), can exceed 1M msg/sec per broker."
+                            },
+                            {
+                                "term": "Single server max TCP connections",
+                                "definition": "Theoretically ~65K per IP (port range). Practically with connection pooling: 10K-100K concurrent connections. A WebSocket server can hold ~10K-50K persistent connections per instance."
+                            },
+                            {
+                                "term": "Seconds in a day",
+                                "definition": "86,400 — round to 100,000 (10^5) for quick math."
+                            },
+                            {
+                                "term": "Seconds in a month",
+                                "definition": "~2.5 million (2.5 × 10^6)."
+                            },
+                            {
+                                "term": "99.9% availability",
+                                "definition": "8.7 hours downtime per year. Three nines."
+                            },
+                            {
+                                "term": "99.99% availability",
+                                "definition": "52.6 minutes downtime per year. Four nines — requires redundancy at every layer."
+                            },
+                            {
+                                "term": "99.999% availability",
+                                "definition": "5.26 minutes downtime per year. Five nines — requires multi-region active-active with automated failover."
+                            }
+                        ]
+                    },
+                    "advanced_tweaks": [
+                        {
+                            "technique": "Use these numbers to challenge your own design",
+                            "when_to_use": "After drawing HLD",
+                            "how": "Ask yourself: 'My design does 3 sequential database reads per request, each ~5ms. That's 15ms just for DB. Add network hops, serialization, and application logic — I'm at ~50ms per request. I need 600K QPS. One server handles 600K/50ms = nope, that's 1000/(50ms) ≈ 20 QPS. I need 30,000 servers? That can't be right — I need caching!' This self-check catches design flaws before the interviewer does."
+                        },
+                        {
+                            "technique": "Tier your latency budget",
+                            "when_to_use": "When designing request flow",
+                            "how": "If your target is p99 < 200ms, allocate: network ingress/egress = 20ms, LB + API Gateway = 5ms, application logic = 25ms, cache lookup = 2ms, DB fallback (on cache miss) = 50ms, serialization = 5ms. Total = ~107ms with room to spare. If you have a cache hit rate of 95%, your average is even lower. This kind of reasoning impresses interviewers."
+                        }
+                    ],
+                    "references": [
+                        {
+                            "title": "Jeff Dean's Latency Numbers Every Programmer Should Know",
+                            "url": "https://gist.github.com/jboner/2841832"
+                        },
+                        {
+                            "title": "Interactive Latency Numbers",
+                            "url": "https://colin-scott.github.io/personal_website/research/interactive_latency.html"
+                        }
+                    ],
+                    "children": []
+                }
+            ]
+        }
+    ],
+    "diagram": {
+        "type": "excalidraw",
+        "title": "System Design Interview Flow Overview",
+        "description": "Shows the progression from problem statement through 6 steps to final architecture, with feedback loops for deep dives.",
+        "data": {
+            "type": "excalidraw",
+            "version": 2,
+            "elements": [
+                {
+                    "type": "rectangle",
+                    "x": 50,
+                    "y": 100,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#a5d8ff",
+                    "strokeColor": "#1971c2",
+                    "label": "1. Requirements"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 300,
+                    "y": 100,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#b2f2bb",
+                    "strokeColor": "#2f9e44",
+                    "label": "2. Core Entities"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 550,
+                    "y": 100,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#ffec99",
+                    "strokeColor": "#e67700",
+                    "label": "3. API Design"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 50,
+                    "y": 220,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#d0bfff",
+                    "strokeColor": "#7048e8",
+                    "label": "4. Data Flow (opt)"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 300,
+                    "y": 220,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#ffc9c9",
+                    "strokeColor": "#e03131",
+                    "label": "5. High-Level Design"
+                },
+                {
+                    "type": "rectangle",
+                    "x": 550,
+                    "y": 220,
+                    "width": 200,
+                    "height": 60,
+                    "backgroundColor": "#ff8787",
+                    "strokeColor": "#c92a2a",
+                    "label": "6. Deep Dives"
+                },
+                {
+                    "type": "arrow",
+                    "x": 250,
+                    "y": 130,
+                    "endX": 300,
+                    "endY": 130
+                },
+                {
+                    "type": "arrow",
+                    "x": 500,
+                    "y": 130,
+                    "endX": 550,
+                    "endY": 130
+                },
+                {
+                    "type": "arrow",
+                    "x": 150,
+                    "y": 160,
+                    "endX": 150,
+                    "endY": 220
+                },
+                {
+                    "type": "arrow",
+                    "x": 250,
+                    "y": 250,
+                    "endX": 300,
+                    "endY": 250
+                },
+                {
+                    "type": "arrow",
+                    "x": 500,
+                    "y": 250,
+                    "endX": 550,
+                    "endY": 250
+                }
+            ]
+        }
+    },
+    "references": [
+        {
+            "title": "System Design Interview — Alex Xu Vol 1 & 2",
+            "url": "https://www.amazon.com/System-Design-Interview-insiders-Second/dp/B08CMF2CQF"
+        },
+        {
+            "title": "Designing Data-Intensive Applications — Martin Kleppmann",
+            "url": "https://dataintensive.net/"
+        },
+        {
+            "title": "Hello Interview — System Design in a Hurry",
+            "url": "https://www.hellointerview.com/learn/system-design/in-a-hurry/introduction"
+        },
+        {
+            "title": "roadmap.sh System Design Roadmap",
+            "url": "https://roadmap.sh/system-design"
+        }
+    ]
+}

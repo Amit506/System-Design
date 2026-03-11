@@ -1,0 +1,166 @@
+{
+    "id": "ch05",
+    "title": "Databases & Data Modeling",
+    "parent_id": null,
+    "order": 5,
+    "tags": [
+        "SQL",
+        "NoSQL",
+        "ACID",
+        "BASE",
+        "data-modeling",
+        "postgres",
+        "cassandra",
+        "mongodb",
+        "dynamo"
+    ],
+    "summary": "SQL vs NoSQL internals — B-Tree and LSM-Tree storage engines, ACID vs BASE guarantees, data modeling for different access patterns, and technology selection guide.",
+    "explanation": {
+        "overview": "The database is the most critical component in system design — it persists your data and its characteristics (consistency, throughput, query model) constrain your entire architecture. Every system design interview involves choosing a database, and the best candidates explain WHY based on access patterns, consistency needs, and scale.",
+        "how_it_works_internally": "Databases solve two problems: (1) store data durably (survive restarts and crashes), and (2) retrieve data efficiently (answer queries fast). These goals are in tension — storing data optimally for writes (sequential append) differs from optimal read storage (sorted, indexed). The two main storage engine families (B-Tree and LSM-Tree) represent different trade-off points."
+    },
+    "children": [
+        {
+            "id": "ch05.s01",
+            "title": "SQL (Relational) Databases",
+            "parent_id": "ch05",
+            "order": 1,
+            "tags": [
+                "SQL",
+                "relational",
+                "ACID",
+                "normalization",
+                "postgres",
+                "mysql"
+            ],
+            "summary": "Relational databases with ACID transactions, B-Tree storage, and when to use them.",
+            "explanation": {
+                "overview": "Relational databases (PostgreSQL, MySQL, Oracle) store data in tables with rows and columns. Tables have relationships (foreign keys). Data is accessed via SQL — a declarative query language where you describe WHAT you want and the query optimizer decides HOW to get it.",
+                "key_concepts": [
+                    {
+                        "term": "ACID Properties",
+                        "definition": "Atomicity: a transaction either fully completes or fully rolls back — no partial state. If transferring money, either both accounts change or neither does. INTERNALLY: implemented via Write-Ahead Log (WAL). Before modifying data pages, the database writes the intended changes to a sequential log file (WAL). On crash, replay the WAL to recover to a consistent state. Consistency: transactions move the database from one valid state to another. Constraints (foreign keys, uniqueness, CHECK) are enforced. Isolation: concurrent transactions don't interfere with each other. Four isolation levels (from lowest to highest): READ UNCOMMITTED (dirty reads), READ COMMITTED (default in Postgres), REPEATABLE READ (default in MySQL InnoDB), SERIALIZABLE (if two transactions conflict, one is aborted). INTERNALLY: implemented via MVCC (Multi-Version Concurrency Control). Each row has a hidden version number. Reads see a snapshot of the data at the transaction's start time. Writes create new versions. Old versions are cleaned up by VACUUM (Postgres) or purge threads (MySQL). Durability: committed transactions survive crashes. Guaranteed by WAL + fsync to disk."
+                    },
+                    {
+                        "term": "B-Tree Storage Engine (Read-Optimized)",
+                        "definition": "The default storage for Postgres, MySQL InnoDB, and most relational DBs. INTERNAL: data is stored in fixed-size pages (usually 8 KB in Postgres, 16 KB in InnoDB). Pages are organized in a balanced tree (B+Tree). Root page → internal pages → leaf pages (containing actual row data). Each internal page contains sorted keys and pointers to child pages. Lookup: start at root, binary search for the key range, follow pointer to child, repeat until leaf — O(log N) with a branching factor of ~500 (a 3-level tree can index 500^3 = 125 million keys). INSERT: find the correct leaf, insert the key. If the leaf is full, split it into two pages and add a pointer in the parent (may cascade splits up the tree). UPDATE: find the row page, modify in place (with WAL for crash safety). PROS: excellent read performance, efficient range scans (leaf pages are linked), well understood. CONS: write amplification — updating one row writes the entire 8 KB page. Random I/O for writes (must find and update the correct page). Fragmentation over time."
+                    },
+                    {
+                        "term": "PostgreSQL Specifics",
+                        "definition": "MVCC implementation: every row has xmin (creating transaction ID) and xmax (deleting transaction ID). A transaction sees a row if xmin < its_snapshot AND (xmax is null OR xmax > its_snapshot). UPDATE creates a new row version (new xmin) and marks old version (xmax = current_txid). VACUUM reclaims dead rows. TOAST: large values (>2 KB) are compressed and stored in a separate TOAST table. The main table stores a pointer. This keeps main table rows small for fast sequential scans. Connection model: one OS process per client connection (unlike MySQL's thread-per-connection). Overhead: ~10 MB per connection. For 10,000 connections: 100 GB just for connection overhead. FIX: use PgBouncer (connection pooler) — 10,000 client connections mapped to 100 database connections."
+                    }
+                ]
+            },
+            "configurable_params": [
+                {
+                    "name": "shared_buffers (Postgres)",
+                    "default": "128 MB",
+                    "effect": "Memory used for caching data pages. Set to 25% of total RAM.",
+                    "tradeoff": "Higher = more pages cached, fewer disk reads. Too high = takes memory from OS page cache."
+                },
+                {
+                    "name": "work_mem (Postgres)",
+                    "default": "4 MB",
+                    "effect": "Memory for sorting and hash operations. Set to total_RAM / max_connections.",
+                    "tradeoff": "Too low = sorts spill to disk (slow). Too high with many connections = OOM."
+                },
+                {
+                    "name": "max_connections",
+                    "default": "100",
+                    "effect": "Maximum client connections. Use PgBouncer for higher concurrency.",
+                    "tradeoff": "Each connection uses ~10 MB. 1000 connections = 10 GB overhead. Use connection pooling."
+                }
+            ],
+            "children": []
+        },
+        {
+            "id": "ch05.s02",
+            "title": "NoSQL Databases",
+            "parent_id": "ch05",
+            "order": 2,
+            "tags": [
+                "NoSQL",
+                "document",
+                "wide-column",
+                "key-value",
+                "graph",
+                "LSM-tree"
+            ],
+            "summary": "NoSQL categories — key-value, document, wide-column, and graph — each optimized for specific access patterns.",
+            "explanation": {
+                "overview": "NoSQL ('Not Only SQL') databases sacrifice some relational features (JOINs, ACID across tables) to gain scalability, flexibility, or performance for specific workloads. There is no single 'NoSQL' — it's a category containing fundamentally different database types.",
+                "key_concepts": [
+                    {
+                        "term": "Key-Value Stores (Redis, DynamoDB, Memcached)",
+                        "definition": "Simplest model: store and retrieve values by a unique key. Think of it as a distributed hash map. GET(key) → value, PUT(key, value), DELETE(key). No secondary indexes, no queries beyond key lookup (DynamoDB adds GSI — Global Secondary Indexes as an extension). THROUGHPUT: Redis: 100K+ ops/sec (in-memory). DynamoDB: virtually unlimited (managed, auto-scaling, per-table provisioned throughput). USE WHEN: session storage, caching, rate limit counters, feature flags, shopping carts — any access pattern that's 'I know the key, give me the value'."
+                    },
+                    {
+                        "term": "Document Stores (MongoDB, CouchDB, Firestore)",
+                        "definition": "Store JSON/BSON documents (nested objects). Each document can have a different structure (schema-flexible). Queries can access nested fields: db.users.find({'address.city': 'NYC'}). INTERNAL (MongoDB): documents stored in BSON format. WiredTiger storage engine (default since 3.2) uses B-Tree for indexes and a document-level locking for concurrency. Supports secondary indexes, aggregation pipeline, text search, and geospatial queries. REPLICATION: replica sets — one primary, N secondaries with asynchronous replication. Read concern: 'local' (read from any), 'majority' (read from majority-committed data). SHARDING: shard key determines document distribution. Choose carefully — a bad shard key creates hot partitions. USE WHEN: semi-structured data (user profiles with optional fields), prototyping (no migration needed), content management, catalogs with varying attributes."
+                    },
+                    {
+                        "term": "Wide-Column Stores (Cassandra, HBase, ScyllaDB)",
+                        "definition": "Data organized by partition key → clustering columns → values. Each row can have different columns. Optimized for massive write throughput and time-series data. INTERNAL (Cassandra): uses LSM-Tree (Log-Structured Merge-Tree) storage engine. WRITE PATH: write to commit log (sequential, for durability) → write to memtable (in-memory sorted structure) → when memtable is full, flush to SSTable (Sorted String Table) on disk. Reads: check memtable → check SSTables (newest first) → bloom filter per SSTable to skip unnecessary reads → merge results. COMPACTION: periodically merge SSTables to remove deleted data (tombstones) and reduce read amplification. Strategies: Size-Tiered (good for write-heavy), Leveled (good for read-heavy). LSM-Tree vs B-Tree: LSM has better write throughput (sequential I/O) but higher read latency (must check multiple SSTables). B-Tree has better read performance but higher write amplification. CASSANDRA SPECIFICS: leaderless replication (any node can accept writes), tunable consistency (QUORUM, ONE, ALL), gossip protocol for node discovery, consistent hashing for data distribution, no single point of failure. USE WHEN: massive write volume (IoT time-series, event logging, messaging), geographically distributed (multi-DC replication built-in), data model fits partition key access patterns. NOT WHEN: you need JOINs, secondary indexes on many columns, or ad-hoc analytical queries."
+                    },
+                    {
+                        "term": "Graph Databases (Neo4j, Amazon Neptune, JanusGraph)",
+                        "definition": "Store data as nodes (entities) and edges (relationships). Queries traverse relationships efficiently. While relational DBs can model relationships with JOIN tables, graph DBs make relationship traversal O(1) per hop rather than O(N) for a JOIN. INTERNAL (Neo4j): native graph storage — each node stores pointers to its adjacent edges. Traversing from node A to its friends = follow pointers (constant time per hop). In a relational DB: SELECT * FROM friendships WHERE user_id = A requires an index lookup (O(log N)). For 6 degrees of separation on 1B users: graph DB = 6 pointer traversals. Relational = 6 nested queries, each scanning millions of rows. USE WHEN: social networks (friends-of-friends, mutual connections), fraud detection (find unusual patterns in transaction graphs), recommendation engines (similar users, similar items), knowledge graphs."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch05.s03",
+            "title": "SQL vs NoSQL Decision Framework",
+            "parent_id": "ch05",
+            "order": 3,
+            "tags": [
+                "decision-framework",
+                "when-to-use",
+                "trade-offs"
+            ],
+            "summary": "Concrete decision framework for choosing the right database in system design interviews.",
+            "explanation": {
+                "overview": "The question is never 'which database is best?' but 'which database best fits MY access patterns, consistency needs, and scale requirements?'",
+                "key_concepts": [
+                    {
+                        "term": "Choose SQL (Postgres/MySQL) when",
+                        "definition": "(1) You need ACID transactions (financial, inventory, user accounts). (2) Data has strong relationships (JOINs are required). (3) Schema is well-defined and stable. (4) You need complex queries (aggregations, GROUP BY, HAVING, subqueries). (5) Scale is < 10 TB and < 50K QPS (single node or read replicas sufficient). MOST SYSTEMS START HERE — don't reach for NoSQL unless you have a specific reason."
+                    },
+                    {
+                        "term": "Choose Document DB (MongoDB) when",
+                        "definition": "(1) Data is semi-structured or schema varies (product catalogs with different attributes). (2) You want rapid development (no migrations). (3) Nested documents fit your access pattern (user profile with addresses, preferences). (4) You mostly access by primary key or simple queries."
+                    },
+                    {
+                        "term": "Choose Wide-Column (Cassandra) when",
+                        "definition": "(1) Write throughput > 100K writes/sec. (2) Time-series data (IoT, logs, events). (3) Multi-datacenter replication needed. (4) Access pattern is known and fits partition key design. (5) Eventual consistency is acceptable."
+                    },
+                    {
+                        "term": "Choose Key-Value (Redis/DynamoDB) when",
+                        "definition": "(1) Pure key-based lookups. (2) Sub-millisecond latency required. (3) Simple data model (no complex queries). (4) Caching, sessions, counters, leaderboards."
+                    },
+                    {
+                        "term": "Polyglot Persistence",
+                        "definition": "Use MULTIPLE databases in one system — each optimized for its access pattern. Example for an e-commerce platform: PostgreSQL for orders and inventory (ACID), Redis for sessions and cache, Elasticsearch for product search, Cassandra for clickstream analytics, Neo4j for product recommendations. This is the industry standard for large systems."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Designing Data-Intensive Applications (Ch. 2-3) — Martin Kleppmann",
+            "url": "https://dataintensive.net/"
+        },
+        {
+            "title": "PostgreSQL Documentation",
+            "url": "https://www.postgresql.org/docs/"
+        },
+        {
+            "title": "Cassandra Architecture Documentation",
+            "url": "https://cassandra.apache.org/doc/latest/cassandra/architecture/"
+        }
+    ]
+}

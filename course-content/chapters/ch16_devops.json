@@ -1,0 +1,124 @@
+{
+    "id": "ch16",
+    "title": "DevOps, CI/CD & Observability",
+    "parent_id": null,
+    "order": 16,
+    "tags": [
+        "CI/CD",
+        "observability",
+        "monitoring",
+        "logging",
+        "tracing",
+        "prometheus",
+        "grafana",
+        "ELK"
+    ],
+    "summary": "CI/CD pipeline design, the three pillars of observability (metrics, logs, traces), monitoring best practices, alerting strategies, and SRE concepts.",
+    "explanation": {
+        "overview": "DevOps bridges development and operations — ensuring code is deployed safely, frequently, and automatically. Observability ensures you can understand what's happening inside your production system by examining its external outputs. In system design interviews, you're expected to know how the system is deployed and monitored."
+    },
+    "children": [
+        {
+            "id": "ch16.s01",
+            "title": "CI/CD Pipeline Design",
+            "parent_id": "ch16",
+            "order": 1,
+            "tags": [
+                "CI",
+                "CD",
+                "pipeline",
+                "blue-green",
+                "canary"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "CI (Continuous Integration)",
+                        "definition": "Every commit triggers: code checkout → build → lint → unit tests → integration tests → artifact creation (Docker image, JAR). Fast feedback: developers know within 5-10 minutes if their change broke anything. BEST PRACTICES: (1) Run tests in parallel (split across pods). (2) Cache dependencies (node_modules, Maven .m2). (3) Fail fast (lint first, then unit tests, then slow integration tests). (4) Trunk-based development (short-lived branches, merge to main daily). TOOLS: GitHub Actions, GitLab CI, Jenkins, CircleCI, ArgoCD."
+                    },
+                    {
+                        "term": "CD (Continuous Deployment/Delivery)",
+                        "definition": "Continuous Delivery: after CI passes, the artifact is READY to deploy (manual approval before production). Continuous Deployment: after CI passes, the artifact is AUTOMATICALLY deployed to production (no human approval). Most organizations do Continuous Delivery with automated staging deploy + manual production approval."
+                    },
+                    {
+                        "term": "Deployment Strategies",
+                        "definition": "Rolling Update (K8s default): replace old pods one at a time with new pods. minAvailable ensures minimum capacity during deploy. Zero downtime but both versions coexist during rollout — APIs must be backward compatible. Blue-Green: two identical environments (Blue = current, Green = new). Deploy to Green, test, then switch traffic (DNS or LB). Instant rollback (switch back to Blue). COST: 2× infrastructure during deploy. Canary: route 1-5% of traffic to new version. Monitor error rate, latency, business metrics. If OK, gradually increase (10%, 25%, 50%, 100%). If problems, rollback immediately. A/B Testing: like canary but based on user segments (new users, specific region, premium tier) for feature evaluation, not just safety."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch16.s02",
+            "title": "The Three Pillars of Observability",
+            "parent_id": "ch16",
+            "order": 2,
+            "tags": [
+                "metrics",
+                "logs",
+                "traces",
+                "Prometheus",
+                "Grafana",
+                "ELK",
+                "Jaeger"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Metrics (Numbers over Time)",
+                        "definition": "Numeric measurements collected at regular intervals. Types: Counter (monotonically increasing — total requests, total errors), Gauge (point-in-time value — current CPU %, memory usage, active connections), Histogram (distribution of values — request latency split into buckets: <10ms, <50ms, <100ms, <500ms). USE p99 latency, not average (average hides outliers — 99 requests at 10ms + 1 at 10s = average 109ms masks the 10s request). RED Method (rate, errors, duration) for request-driven services. USE Method (utilization, saturation, errors) for resources (CPU, memory, disk). TOOLS: Prometheus (pull-based metric collection, stores time series), Grafana (dashboards), Datadog, CloudWatch. PROMETHEUS INTERNAL: Prometheus scrapes /metrics endpoints every 15-60 seconds. Data stored as time series: metric_name{label=value} → [(timestamp, value), ...]. PromQL query language: http_requests_total{method='GET', status=~'5..'}. rate() computes per-second rate. histogram_quantile(0.99, ...) computes p99 latency."
+                    },
+                    {
+                        "term": "Logs (Events with Context)",
+                        "definition": "Timestamped, unstructured or structured text recording events. STRUCTURED LOGGING: use JSON format — {timestamp, level, service, trace_id, user_id, message, ...}. Enables efficient search and aggregation. NEVER log: passwords, tokens, PII (personal data — GDPR compliance). LEVELS: DEBUG (development only), INFO (normal operations), WARN (unexpected but recovered), ERROR (failure requiring attention). LOG PIPELINE: Application → Fluentd/Filebeat (collect) → Kafka (buffer) → Elasticsearch (store + index) → Kibana (search + visualize). This is the ELK/EFK stack. Elasticsearch inverted index enables full-text search across billions of log lines in milliseconds. LOG RETENTION: 7-30 days hot (Elasticsearch), 90 days warm (cheaper storage), 1 year cold (S3/Glacier for compliance)."
+                    },
+                    {
+                        "term": "Distributed Tracing (Request Journey)",
+                        "definition": "Follows a single request across multiple microservices. A trace consists of spans — each span represents one service's processing of the request. Span contains: trace_id (unique per request), span_id, parent_span_id, service name, operation, start time, duration, status, tags. The trace_id is propagated via HTTP headers (traceparent in W3C Trace Context, or X-B3-TraceId in Zipkin format) so every service logs the same trace_id. VISUALIZATION: Jaeger or Zipkin renders a waterfall graph showing how long each service took and the call sequence (Service A → Service B → Service C → Database). USE WHEN: debugging latency (which service is slow?), understanding dependencies (which services are called?), error tracing (which service caused the 500?). TOOLS: Jaeger, Zipkin, AWS X-Ray, Datadog APM. OpenTelemetry: vendor-neutral standard for metrics, logs, and traces — instrument once, send to any backend."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch16.s03",
+            "title": "Alerting & SRE Practices",
+            "parent_id": "ch16",
+            "order": 3,
+            "tags": [
+                "alerting",
+                "SRE",
+                "SLO",
+                "error-budget",
+                "on-call"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Alerting Best Practices",
+                        "definition": "ALERT ON SYMPTOMS, NOT CAUSES. Bad alert: 'CPU > 90%' (CPU could be high during normal batch processing). Good alert: 'p99 latency > 500ms for 5 minutes' (directly impacts users). Use multi-window, multi-burn-rate alerting: if you're consuming your monthly error budget 10× faster than expected, alert. If 2× faster, warn. PAGES: only page humans for issues requiring immediate action. Use Slack/email for non-urgent. PagerDuty for pages. RUNBOOKS: every alert must link to a runbook — step-by-step instructions to diagnose and resolve the issue. Reduces MTTR."
+                    },
+                    {
+                        "term": "SLO & Error Budgets",
+                        "definition": "SLO (Service Level Objective): availability target (99.9% = 8.76 hours downtime/year). Error Budget = 100% - SLO = 0.1% = 43.2 minutes/month of acceptable downtime. IF error budget remaining: deploy fast, take risks. IF error budget exhausted: freeze deployments, focus on reliability. This creates a quantitative framework for balancing feature velocity and reliability. Google SRE: the team that invented this practice."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Google SRE Book",
+            "url": "https://sre.google/sre-book/table-of-contents/"
+        },
+        {
+            "title": "Prometheus Documentation",
+            "url": "https://prometheus.io/docs/"
+        },
+        {
+            "title": "OpenTelemetry Documentation",
+            "url": "https://opentelemetry.io/docs/"
+        }
+    ]
+}

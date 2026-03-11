@@ -1,0 +1,183 @@
+{
+    "id": "ch03",
+    "title": "Networking & Communication Protocols",
+    "parent_id": null,
+    "order": 3,
+    "tags": [
+        "networking",
+        "HTTP",
+        "TCP",
+        "UDP",
+        "gRPC",
+        "WebSocket",
+        "REST",
+        "GraphQL",
+        "DNS"
+    ],
+    "summary": "Complete networking guide — OSI/TCP-IP layers, DNS resolution, TCP vs UDP internals, HTTP evolution, REST vs gRPC vs GraphQL, WebSockets, and protocol selection for system design.",
+    "explanation": {
+        "overview": "Every system design involves components communicating over a network. Understanding protocols — their strengths, weaknesses, and internals — lets you make informed choices about how services talk to each other. This chapter covers everything from low-level TCP to high-level API paradigms.",
+        "how_it_works_internally": "Network communication follows a layered model. Each layer adds its own header and handles a specific concern: physical transmission (L1-L2), addressing and routing (L3 IP), reliable delivery (L4 TCP/UDP), and application semantics (L7 HTTP/gRPC). When you type a URL, your request traverses all these layers down on the client, crosses the network, and traverses up on the server."
+    },
+    "children": [
+        {
+            "id": "ch03.s01",
+            "title": "DNS — Domain Name System",
+            "parent_id": "ch03",
+            "order": 1,
+            "tags": [
+                "DNS",
+                "resolution",
+                "records",
+                "TTL"
+            ],
+            "summary": "How domain names are resolved to IP addresses — the hierarchical resolution process, record types, and DNS-based tricks for system design.",
+            "explanation": {
+                "overview": "DNS is the internet's phone book — it translates human-readable domain names (google.com) to IP addresses (142.250.80.46). Every HTTP request begins with a DNS lookup.",
+                "how_it_works_internally": "RESOLUTION CHAIN (iterative): (1) Browser checks its local DNS cache. (2) If miss, OS resolver checks /etc/hosts then OS DNS cache. (3) If miss, query the configured DNS resolver (ISP or public like 8.8.8.8). (4) Resolver queries Root nameserver (13 clusters worldwide, anycast) → gets referral to .com TLD nameserver. (5) Resolver queries .com TLD nameserver → gets referral to google.com's authoritative nameserver (ns1.google.com). (6) Resolver queries authoritative nameserver → gets the A record (IP address). (7) Resolver caches the result (respects TTL) and returns to client. Total time: 50-200ms for uncached lookup, <1ms for cached. RECORD TYPES: A (IPv4 address), AAAA (IPv6), CNAME (alias to another domain), MX (mail server), NS (nameserver), TXT (text — used for SPF, DKIM, domain verification), SRV (service discovery — host + port). TTL (Time To Live): how long resolvers cache the record. Low TTL (60s) = fast failover but more DNS queries. High TTL (86400s = 1 day) = fewer queries but slow failover.",
+                "key_concepts": [
+                    {
+                        "term": "DNS in System Design",
+                        "definition": "DNS-based load balancing: return multiple A records (round-robin). Route 53 weighted routing: 70% traffic to region A, 30% to region B. Latency-based routing: resolve to the closest datacenter. Health checks: automatically remove unhealthy IPs from DNS responses. GeoDNS: resolve to different IPs based on client's geographic location (Cloudflare, Route 53). EDGE CASE: DNS caching means changes take time to propagate. During a migration, set TTL to 60s days before, then switch IPs, then raise TTL back. Some clients ignore TTL (especially Java's default DNS cache timeout of infinity — override with networkaddress.cache.ttl=30)."
+                    },
+                    {
+                        "term": "Anycast",
+                        "definition": "Multiple servers share the same IP address. BGP routing sends each client to the nearest server. Used by CDNs (Cloudflare has 300+ PoPs, all sharing the same anycast IP) and DNS root servers (13 addresses but hundreds of physical servers)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch03.s02",
+            "title": "TCP vs UDP — Transport Layer",
+            "parent_id": "ch03",
+            "order": 2,
+            "tags": [
+                "TCP",
+                "UDP",
+                "three-way-handshake",
+                "flow-control",
+                "congestion"
+            ],
+            "summary": "TCP provides reliable, ordered delivery with connection management. UDP provides fast, unreliable delivery with no overhead.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "TCP (Transmission Control Protocol)",
+                        "definition": "Connection-oriented, reliable, ordered byte stream. HOW IT WORKS INTERNALLY: (1) Three-way handshake to establish connection: Client → SYN → Server. Server → SYN-ACK → Client. Client → ACK → Server. Connection established. Takes 1 RTT (~0.5ms same DC, ~150ms cross-continent). (2) Data transfer: sender transmits segments, receiver ACKs each. Lost segments are retransmitted. Segments are reassembled in order using sequence numbers. (3) Flow Control: receiver advertises a 'window size' — how many bytes it can buffer. Sender doesn't send more than the window. Prevents fast sender from overwhelming slow receiver. (4) Congestion Control: sender starts with a small window (slow start), doubles it each RTT until packet loss is detected, then reduces window. Algorithms: CUBIC (Linux default), BBR (Google — better for long-distance, high-bandwidth links). IMPLICATION: TCP is slower to start (handshake + slow start) but guarantees delivery. Ideal for: HTTP, database connections, file transfers, anything where data integrity matters."
+                    },
+                    {
+                        "term": "UDP (User Datagram Protocol)",
+                        "definition": "Connectionless, unreliable, no ordering, no flow control. Sends datagrams independently — no handshake, no ACK, no retransmission. If a packet is lost, the application never knows (unless it implements its own reliability). ADVANTAGES: no handshake overhead (0 RTT), lower latency (no waiting for ACKs), supports multicast/broadcast. USE CASES: DNS queries (small, single request-response), video/audio streaming (losing a frame is better than delaying the stream — reconstruct or skip), online gaming (character positions — stale data is worse than missing data), IoT sensor data (high volume, small payloads, loss-tolerant). QUIC: Google's protocol that runs on UDP but adds connection establishment (1-RTT or 0-RTT with session resumption), reliability, multiplexing (no head-of-line blocking), and encryption (TLS 1.3 built-in). HTTP/3 uses QUIC. Why not just fix TCP? TCP is implemented in the OS kernel — updating TCP across billions of devices takes decades. QUIC runs in userspace and can be updated with application deployments."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch03.s03",
+            "title": "HTTP / HTTPS — Application Layer",
+            "parent_id": "ch03",
+            "order": 3,
+            "tags": [
+                "HTTP",
+                "HTTPS",
+                "HTTP2",
+                "HTTP3",
+                "TLS"
+            ],
+            "summary": "Evolution from HTTP/1.0 to HTTP/3, TLS handshake internals, and keep-alive connection management.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "HTTP/1.0 → HTTP/1.1",
+                        "definition": "HTTP/1.0: new TCP connection per request (expensive — handshake on every request). HTTP/1.1 (1997): persistent connections (Connection: keep-alive, default ON). Multiple requests reuse the same TCP connection. But requests are serialized — head-of-line blocking: the second request waits for the first response. WORKAROUND: browsers open 6-8 parallel TCP connections per domain. TRICKS: domain sharding (serve images from img1.example.com, img2.example.com to get 6 connections per subdomain)."
+                    },
+                    {
+                        "term": "HTTP/2 (2015)",
+                        "definition": "Single TCP connection per domain, multiplexed streams. Multiple requests and responses sent simultaneously over one connection as interleaved binary frames. Each request gets a stream ID — frames are reassembled by stream ID. Features: header compression (HPACK — maintains a dynamic table of previously sent headers, sends only deltas), server push (server proactively sends CSS/JS before client requests them), stream prioritization. LIMITATION: still runs on TCP, so packet loss at TCP layer blocks ALL streams (TCP-level head-of-line blocking)."
+                    },
+                    {
+                        "term": "HTTP/3 (2022)",
+                        "definition": "Runs on QUIC (UDP-based), eliminating TCP head-of-line blocking. Each stream is independent — packet loss on one stream doesn't block others. 0-RTT connection resumption for repeat visitors. Built-in TLS 1.3 encryption. Connection migration — if your phone switches from WiFi to cellular, the connection survives (identified by connection ID, not IP+port)."
+                    },
+                    {
+                        "term": "TLS Handshake (HTTPS)",
+                        "definition": "TLS 1.3 (current standard): 1-RTT handshake. (1) Client Hello: supported cipher suites + key share (Diffie-Hellman public key). (2) Server Hello: chosen cipher suite + key share + certificate + Finished. (3) Client verifies certificate against trusted CAs, derives shared secret from key exchange, sends Finished. Full-duplex encrypted communication begins. TLS 1.2 was 2-RTT (separate key exchange step). TLS 1.3 combines key exchange and hello, saving one RTT. 0-RTT (session resumption): if client has connected before, it caches a pre-shared key (PSK) and sends encrypted data in the first packet. Risk: 0-RTT data can be replayed by an attacker — only use for idempotent requests (GET, not POST)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch03.s04",
+            "title": "API Paradigms — REST vs gRPC vs GraphQL",
+            "parent_id": "ch03",
+            "order": 4,
+            "tags": [
+                "REST",
+                "gRPC",
+                "GraphQL",
+                "API-design",
+                "protobuf"
+            ],
+            "summary": "Three API paradigms — when to use each, internal mechanics, and trade-offs for system design.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "REST (Representational State Transfer)",
+                        "definition": "The most common API style. Resources identified by URLs (GET /users/123, POST /orders). Uses HTTP methods (GET, POST, PUT, PATCH, DELETE) and status codes (200 OK, 201 Created, 400 Bad Request, 404 Not Found, 429 Rate Limited, 500 Internal Error). Data format: JSON (human-readable, verbose) or rarely XML. PROS: simple, universally understood, cacheable (GET responses cached by CDN/browser), stateless, tooling everywhere (Postman, curl, OpenAPI/Swagger). CONS: over-fetching (GET /users/123 returns all fields even if you only need name and email), under-fetching (need user + their posts + their followers = 3 separate requests), no built-in streaming (need SSE or WebSocket separately). BEST PRACTICES: use nouns not verbs (/users not /getUsers), use plural nouns (/users not /user), use query params for filtering (/users?role=admin&sort=name), version your API (/api/v1/users), use HATEOAS links for discoverability, implement cursor-based pagination (not offset), return proper HTTP status codes. USE WHEN: public APIs, CRUD applications, any client-facing API where simplicity and cacheability matter."
+                    },
+                    {
+                        "term": "gRPC (Google Remote Procedure Call)",
+                        "definition": "Binary protocol using Protocol Buffers (protobuf) for serialization, running on HTTP/2. Instead of resource-based URLs, you define services and methods in a .proto file: service UserService { rpc GetUser(GetUserRequest) returns (User); }. Protoc compiler generates client and server stubs in 10+ languages. DATA FORMAT: protobuf — binary encoding, 3-10× smaller than JSON, 10-100× faster to serialize/deserialize. Field identified by number (not name) — more compact, backward compatible (add fields with new numbers). STREAMING: gRPC supports 4 modes — unary (request → response), server streaming (1 request → N responses), client streaming (N requests → 1 response), bidirectional streaming (N → N). WHY SMALLER: JSON '{\"name\":\"Alice\",\"age\":30}' = 27 bytes. Protobuf equivalent ≈ 9 bytes (field numbers + varint encoding). PROS: fastest serialization, strongly typed (protobuf schema = contract), auto-generated code, HTTP/2 multiplexing, native streaming. CONS: not human-readable (binary), harder to debug (need grpcurl or Bloom), not cacheable by CDN (binary + post-like), browser support limited (needs grpc-web proxy). USE WHEN: internal microservice communication where latency matters, polyglot environments (need Java, Python, Go clients), streaming use cases (live data feeds, video metadata)."
+                    },
+                    {
+                        "term": "GraphQL",
+                        "definition": "Query language for APIs — client specifies exactly which fields it needs. Single endpoint (POST /graphql). Client sends: { user(id: 123) { name email posts { title } } } → server returns exactly those fields, nothing more. SOLVES: over-fetching (only get requested fields) and under-fetching (nested queries return related data in one request). INTERNAL: server defines a schema (type User { name: String!, email: String!, posts: [Post!]! }). Each field has a resolver function that fetches data. The GraphQL engine traverses the query, calls resolvers, and assembles the response. PROS: flexible queries (mobile gets fewer fields, web gets more), self-documenting (schema introspection), single round trip for complex data. CONS: N+1 query problem (naive resolvers — user → 20 posts → 20 author lookups = 21 DB queries. FIX: DataLoader batching), complex caching (no URL-based caching since all queries go to same endpoint — use persisted queries or Apollo cache), security concern (malicious deep/complex queries can DDoS — use query depth limiting, query cost analysis, and timeout). USE WHEN: mobile apps (minimize data transfer), complex client needs (dashboards pulling data from multiple services), rapid frontend iteration (frontend team can change data shape without backend changes)."
+                    },
+                    {
+                        "term": "WebSocket",
+                        "definition": "Full-duplex, persistent connection between client and server over a single TCP connection. After an HTTP upgrade handshake (client sends Upgrade: websocket header, server responds 101 Switching Protocols), the connection stays open and both sides can send messages at any time. NO request-response pattern — bidirectional push. INTERNAL: after handshake, data is sent in frames (text or binary). Frames are lightweight — 2-14 bytes of header per message vs HTTP's hundreds of bytes of headers per request. Server can push to client without client requesting (unlike HTTP). HEARTBEAT: client and server exchange ping/pong frames to detect disconnections (typically every 30-60 seconds). SCALING CHALLENGE: each WebSocket connection is stateful and persistent. One server can hold ~10K-50K connections (limited by file descriptors and memory). For 10M concurrent users: need 200-1000 WebSocket servers. ROUTING: if User A wants to send a message to User B, and they're on different servers, you need a Pub/Sub layer (Redis Pub/Sub, Kafka) to route between servers. USE WHEN: chat (WhatsApp, Slack), live collaboration (Google Docs), real-time gaming, live dashboards, live sports scores."
+                    },
+                    {
+                        "term": "Server-Sent Events (SSE)",
+                        "definition": "Unidirectional server → client push over HTTP. Client opens a long-lived HTTP connection (Content-Type: text/event-stream), and the server sends events as they occur. Unlike WebSocket, SSE is HTTP-based — works with existing infrastructure (proxies, CDN, auth). SIMPLER than WebSocket but one-way only. Client can't send through the SSE connection (uses regular HTTP for sending). Auto-reconnect built into the browser API (EventSource). USE WHEN: live notifications, feed updates, stock tickers — any scenario where only the server pushes data."
+                    }
+                ]
+            },
+            "tradeoffs": {
+                "pros": [
+                    "REST: simple, cacheable, universal",
+                    "gRPC: fast, typed, streaming",
+                    "GraphQL: flexible, one trip",
+                    "WebSocket: real-time bidirectional"
+                ],
+                "cons": [
+                    "REST: over/under-fetching",
+                    "gRPC: not human-readable, needs proxy for browser",
+                    "GraphQL: complex, N+1 problem",
+                    "WebSocket: stateful, hard to scale"
+                ],
+                "when_to_use": "REST for external/public APIs. gRPC for internal service-to-service. GraphQL for complex client-driven queries. WebSocket for real-time bidirectional. SSE for server-push only.",
+                "when_to_avoid": "REST for real-time. gRPC for browser-facing. GraphQL for simple CRUD. WebSocket for request-response."
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "HTTP/2 Explained — Daniel Stenberg",
+            "url": "https://http2-explained.haxx.se/"
+        },
+        {
+            "title": "gRPC Official Documentation",
+            "url": "https://grpc.io/docs/"
+        },
+        {
+            "title": "GraphQL Official Specification",
+            "url": "https://spec.graphql.org/"
+        }
+    ]
+}

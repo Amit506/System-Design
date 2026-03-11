@@ -1,0 +1,175 @@
+{
+    "id": "ch09",
+    "title": "CAP Theorem, Consensus & Distributed Systems Theory",
+    "parent_id": null,
+    "order": 9,
+    "tags": [
+        "CAP",
+        "PACELC",
+        "Raft",
+        "Paxos",
+        "ZooKeeper",
+        "distributed-locks"
+    ],
+    "summary": "CAP/PACELC theorems, Raft consensus internals (leader election, log replication), Paxos, ZooKeeper/etcd, and distributed locking mechanisms.",
+    "explanation": {
+        "overview": "These are the theoretical foundations that explain WHY distributed systems must make trade-offs. CAP tells you what's impossible, consensus protocols tell you how to achieve the possible, and distributed locks/coordination services provide building blocks for higher-level patterns.",
+        "how_it_works_internally": "In any distributed system with replicated data, you must handle network partitions (they WILL happen in production). CAP forces you to choose between consistency and availability during a partition. Most real systems are more nuanced — PACELC extends the analysis to normal operation."
+    },
+    "children": [
+        {
+            "id": "ch09.s01",
+            "title": "CAP Theorem & PACELC",
+            "parent_id": "ch09",
+            "order": 1,
+            "tags": [
+                "CAP",
+                "PACELC",
+                "CP",
+                "AP"
+            ],
+            "summary": "What CAP actually means, common misunderstandings, and the more practical PACELC model.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "CAP Theorem",
+                        "definition": "In the presence of a network Partition (P), you must choose between Consistency (C) and Availability (A). You CANNOT have all three simultaneously. IMPORTANT NUANCE: P is not optional — network partitions always happen in production (switch failure, cable cut, network congestion). So the real choice is: CP or AP during a partition. During NORMAL operation (no partition), you can have both C and A. CP systems: during partition, refuse requests to maintain consistency. MongoDB (primary unavailable = no writes), HBase, ZooKeeper, etcd. AP systems: during partition, continue serving requests with potentially stale data. Cassandra (any node accepts writes, merge later), DynamoDB, CouchDB. COMMON MISCONCEPTION: CAP does not mean you must give up one permanently. You choose behavior DURING a partition. Most of the time (99.99%), there's no partition and both C and A are maintained."
+                    },
+                    {
+                        "term": "PACELC",
+                        "definition": "Extends CAP: during Partition, choose Availability or Consistency. ELSE (normal operation), choose Latency or Consistency. This captures real trade-offs better. PA/EL: highly available during partition, low latency normally (Cassandra, DynamoDB). PC/EC: consistent during partition, consistent normally but higher latency (MongoDB, PostgreSQL with sync replication). PA/EC: available during partition, consistent normally (unusual). PC/EL: consistent during partition, low latency normally (by using quorum reads/writes). EXAMPLE: DynamoDB is PA/EL — during a partition, it stays available (AP). During normal operation, it offers low latency reads from any replica (eventual consistency). You CAN request strong consistency (read from leader) but at higher latency cost."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch09.s02",
+            "title": "Raft Consensus — Deep Dive",
+            "parent_id": "ch09",
+            "order": 2,
+            "tags": [
+                "Raft",
+                "leader-election",
+                "log-replication",
+                "consensus"
+            ],
+            "summary": "How Raft achieves consensus in a distributed system — leader election, log replication, and safety guarantees.",
+            "explanation": {
+                "overview": "Raft is a consensus protocol designed to be understandable (unlike Paxos). It ensures that a cluster of servers agrees on a sequence of operations, even if some servers crash. Used by: etcd (Kubernetes state store), CockroachDB, TiKV, Consul, HashiCorp Vault.",
+                "how_it_works_internally": "Raft divides consensus into three sub-problems: leader election, log replication, and safety. At any time, each server is in one of three states: Leader (handles all client requests), Follower (passive, responds to leader), Candidate (trying to become leader).",
+                "step_by_step": [
+                    {
+                        "step": 1,
+                        "title": "Leader Election",
+                        "detail": "Normal state: one leader, rest are followers. Each follower has an election timeout (randomized, 150-300ms). If a follower doesn't hear from the leader (via heartbeat AppendEntries RPCs) before timeout, it assumes the leader is dead. Follower → increments its term → transitions to Candidate → votes for itself → sends RequestVote RPCs to all other nodes. Each node votes for at most one candidate per term (first-come-first-served). If candidate receives votes from a majority (N/2 + 1), it becomes the new Leader. If no majority (split vote), all candidates' election timers expire with new random timeouts, and election restarts. The randomized timeout makes split votes rare (typically resolved in 1-2 rounds). TERM: monotonically increasing integer. Acts as a logical clock. A server with a higher term supersedes servers with lower terms. If a server receives a message with a higher term, it immediately becomes a follower."
+                    },
+                    {
+                        "step": 2,
+                        "title": "Log Replication",
+                        "detail": "Client sends a command to the leader. Leader appends the command to its log as a new entry (with term and index). Leader sends AppendEntries RPCs to all followers with the new entry. When a majority of followers have appended the entry, it's 'committed'. Leader applies committed entries to its state machine and responds to client. Followers apply committed entries to their state machines in order. If a follower's log diverges (missed entries), the leader sends all missing entries. The leader never deletes or modifies its log — only appends."
+                    },
+                    {
+                        "step": 3,
+                        "title": "Safety Guarantees",
+                        "detail": "Election Restriction: a candidate must have a log at least as up-to-date as a majority of nodes to win an election. This ensures the new leader has all committed entries. Leader Completeness: if an entry is committed in a given term, it will be present in the logs of all leaders for higher terms. No Split Brain: at most one leader per term (each node votes once per term, leader needs majority). A CLUSTER OF 5 NODES tolerates 2 failures. A cluster of 3 tolerates 1 failure. General: 2F+1 nodes to tolerate F failures."
+                    }
+                ]
+            },
+            "configurable_params": [
+                {
+                    "name": "election-timeout",
+                    "default": "150-300ms (randomized)",
+                    "effect": "Lower = faster leader election. Higher = fewer unnecessary elections during network jitter.",
+                    "tradeoff": "Too low: frequent elections in lossy networks. Too high: longer unavailability after leader crash. Must be >> heartbeat interval."
+                },
+                {
+                    "name": "heartbeat-interval",
+                    "default": "50-150ms",
+                    "effect": "How often leader sends empty AppendEntries to prevent follower timeouts.",
+                    "tradeoff": "Lower = faster failure detection but more network traffic. Rule: election_timeout ≈ 10× heartbeat_interval."
+                }
+            ],
+            "children": []
+        },
+        {
+            "id": "ch09.s03",
+            "title": "ZooKeeper, etcd & Coordination Services",
+            "parent_id": "ch09",
+            "order": 3,
+            "tags": [
+                "ZooKeeper",
+                "etcd",
+                "coordination",
+                "leader-election",
+                "config"
+            ],
+            "summary": "Distributed coordination services used for leader election, config management, and distributed locking.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "ZooKeeper",
+                        "definition": "Centralized coordination service by Apache. Data model: hierarchical namespace of znodes (like a filesystem: /services/api/leader). Each znode holds small data (< 1 MB) and has a version number. Znode types: Persistent (survives client disconnect), Ephemeral (auto-deleted when creating client's session ends — used for leader election and service discovery), Sequential (append incrementing number: /locks/lock-0000000001). WATCHES: clients register watchers on znodes — notified when the znode changes. One-time trigger (must re-register after notification). Used for: leader election (create ephemeral znode /leader — first to create wins, others watch and take over when it's deleted), distributed locks (sequential ephemeral znodes — lowest sequence number holds lock), configuration management (all services watch /config, get notified on change), service discovery (services create ephemeral znodes under /services/api; clients read the list). INTERNAL: ZAB (ZooKeeper Atomic Broadcast) protocol — similar to Raft. One leader, followers. Leader processes all writes, followers handle reads. Requires majority quorum (3 or 5 nodes)."
+                    },
+                    {
+                        "term": "etcd",
+                        "definition": "Distributed key-value store using Raft consensus. Foundation of Kubernetes — stores all cluster state (pods, services, configs, secrets). Key differences from ZooKeeper: gRPC API (vs ZooKeeper's custom protocol), flat key-space with prefix queries (vs ZooKeeper's hierarchical znodes), persistent watches (vs ZooKeeper's one-time watches), leases (TTL-based keys, similar to ephemeral znodes). Used for: Kubernetes cluster state, service discovery (with etcd + CoreDNS), distributed locking (etcd lease + comparison), leader election (etcd election campaign). PERFORMANCE: ~10K writes/sec, ~100K reads/sec per cluster. Data should be < 8 GB (it's for metadata, not bulk data)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch09.s04",
+            "title": "Distributed Locking",
+            "parent_id": "ch09",
+            "order": 4,
+            "tags": [
+                "distributed-locks",
+                "Redlock",
+                "fencing-token",
+                "ZooKeeper-lock"
+            ],
+            "summary": "Mechanisms for mutual exclusion across distributed systems — Redis locks, Redlock, ZooKeeper locks, and fencing tokens.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Redis SETNX Lock",
+                        "definition": "Simplest distributed lock: SET lock_key unique_value NX PX 30000 (set if not exists, expire in 30 seconds). If SETNX returns OK, you hold the lock. Release: Lua script that checks if the value matches (prevents releasing someone else's lock). PROBLEM: if Redis restarts (no persistence) or network partition occurs, the lock is lost. Two clients can hold the 'same lock'. Acceptable for: efficiency locks (dedup, cache population) where occasional double-processing is tolerable. NOT acceptable for: correctness locks (payment processing, inventory deduction)."
+                    },
+                    {
+                        "term": "Redlock Algorithm",
+                        "definition": "Martin Kleppmann's criticism notwithstanding, Redlock is Redis's attempt at a stronger distributed lock. ALGORITHM: run 5 independent Redis instances. To acquire: SET on all 5 with unique_value and TTL. If majority (3+) succeed within the TTL time - clock drift, lock is acquired. Release: DEL on all 5. PROBLEM: relies on wall-clock time assumptions. If a server's clock jumps forward (NTP correction, VM pause), the lock can expire on some nodes while the client still thinks it holds it. Martin Kleppmann argument: Redlock is fundamentally unsafe for correctness because it depends on timing assumptions that can't be guaranteed."
+                    },
+                    {
+                        "term": "ZooKeeper Distributed Lock (Correct)",
+                        "definition": "CREATE SEQUENTIAL EPHEMERAL ZNODE: /locks/resource-0000000047. Read all children of /locks/. If your znode has the LOWEST sequence number → you hold the lock. If not → watch the znode with the next lower sequence number. When it's deleted (lock released or client died), check again. WHY THIS WORKS: ephemeral znodes auto-delete on client death (session timeout). No zombie locks. Sequential ordering prevents thundering herd (each waiter watches only its predecessor, not all predecessors). ZooKeeper's consensus guarantees the ordering is consistent."
+                    },
+                    {
+                        "term": "Fencing Token",
+                        "definition": "Even with a correct lock, a client can hold a lock, pause (GC pause, VM snapshot), and resume after the lock expired — now it and a new lock holder both think they hold the lock. SOLUTION: when a lock is granted, issue a monotonically increasing fencing token (e.g., 42). The client sends this token with every write to the protected resource. The resource rejects writes with a token lower than the highest it's seen. If client A pauses with token 42, lock expires, client B gets token 43, client A wakes up and tries to write with token 42 → REJECTED (43 > 42). This is the only way to make distributed locks truly safe for correctness. etcd lease IDs serve as fencing tokens."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Raft Paper — In Search of an Understandable Consensus Algorithm",
+            "url": "https://raft.github.io/raft.pdf"
+        },
+        {
+            "title": "Raft Visualization",
+            "url": "https://raft.github.io/"
+        },
+        {
+            "title": "Martin Kleppmann — How to do Distributed Locking",
+            "url": "https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html"
+        },
+        {
+            "title": "ZooKeeper Documentation",
+            "url": "https://zookeeper.apache.org/doc/current/"
+        }
+    ]
+}

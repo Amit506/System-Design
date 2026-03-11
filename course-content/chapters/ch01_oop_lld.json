@@ -1,0 +1,284 @@
+{
+    "id": "ch01",
+    "title": "OOP & Low-Level Design Foundations",
+    "parent_id": null,
+    "order": 1,
+    "tags": [
+        "OOP",
+        "LLD",
+        "SOLID",
+        "design-patterns",
+        "UML"
+    ],
+    "summary": "Object-oriented programming fundamentals, SOLID principles, GoF design patterns with internals, UML diagrams, and a structured LLD interview framework.",
+    "explanation": {
+        "overview": "Low-Level Design (LLD) focuses on the internal structure of a single component — class hierarchies, design patterns, database schemas, and API contracts. While HLD asks 'what components do we need?', LLD asks 'how do we build each component?' LLD interviews test your ability to write clean, extensible, maintainable code that follows established principles.",
+        "how_it_works_internally": "In an LLD interview (45-60 min), you're asked to design a specific component: parking lot, elevator system, chess game, LRU cache, or rate limiter. You must produce class diagrams, identify entities, define relationships, apply relevant design patterns, and often write working code. The evaluation focuses on extensibility (can new features be added without modifying existing code?), separation of concerns, and correct use of patterns."
+    },
+    "children": [
+        {
+            "id": "ch01.s01",
+            "title": "OOP Core Concepts",
+            "parent_id": "ch01",
+            "order": 1,
+            "tags": [
+                "encapsulation",
+                "inheritance",
+                "polymorphism",
+                "abstraction"
+            ],
+            "summary": "The four pillars of OOP and how they enable maintainable, extensible software.",
+            "explanation": {
+                "overview": "OOP organizes code around objects (data + behavior) rather than functions and procedures. Four pillars form its foundation.",
+                "key_concepts": [
+                    {
+                        "term": "Encapsulation",
+                        "definition": "Bundle data (fields) and methods that operate on that data into a single unit (class), and restrict direct access to internal state. External code interacts through public methods (getters/setters), not by directly modifying fields. WHY: prevents invalid state. A BankAccount class ensures balance never goes negative by validating in the withdraw() method — if balance was public, any code could set it to -1000. INTERNALLY: Java uses access modifiers (private, protected, public). Python uses convention (_protected, __name_mangled) but doesn't enforce it. INDUSTRY TWEAK: prefer immutable objects where possible — once created, state can't change. Eliminates entire categories of bugs (race conditions, invalid state transitions). Java Records and Python dataclasses(frozen=True) support this."
+                    },
+                    {
+                        "term": "Inheritance",
+                        "definition": "A class (child) inherits fields and methods from another class (parent), enabling code reuse and 'is-a' relationships. Example: class Dog extends Animal — Dog inherits eat(), sleep() and adds bark(). INTERNALLY: in Java, method dispatch uses a vtable (virtual method table) — each class has a table of function pointers. When you call animal.speak(), the JVM looks up the vtable of the actual runtime type (Dog) and calls Dog.speak(), not Animal.speak(). This is dynamic dispatch. DANGERS: deep inheritance hierarchies (>3 levels) become fragile — a change in the base class can break all descendants (fragile base class problem). INDUSTRY STANDARD: prefer composition over inheritance. Instead of class Dog extends Animal, use class Dog { Animal animal; }. This is more flexible — you can swap Animal implementations at runtime."
+                    },
+                    {
+                        "term": "Polymorphism",
+                        "definition": "Objects of different classes can be treated through the same interface. Two types: (1) Compile-time (method overloading — same method name, different parameter types). (2) Runtime (method overriding — subclass provides its own implementation of a parent method). EXAMPLE: Shape[] shapes = {new Circle(), new Rectangle()}; for (Shape s : shapes) s.draw(); — each shape draws itself differently, but the calling code doesn't know or care which type it is. This is the foundation of the Strategy pattern and plugin architectures. INTERNALLY: runtime polymorphism works via dynamic dispatch (vtable lookup in JVM, vptr in C++)."
+                    },
+                    {
+                        "term": "Abstraction",
+                        "definition": "Hide complex implementation details and expose only the essential interface. A DatabaseConnection interface has methods connect(), query(), close() — the caller doesn't know if the underlying implementation uses TCP sockets, connection pooling, or SSL. The implementation can change without affecting callers. In Java: abstract classes (partial implementation + abstract methods) and interfaces (pure contract, no state until Java 8 default methods). In Python: abc.ABC with @abstractmethod."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch01.s02",
+            "title": "SOLID Principles — Deep Dive",
+            "parent_id": "ch01",
+            "order": 2,
+            "tags": [
+                "SOLID",
+                "SRP",
+                "OCP",
+                "LSP",
+                "ISP",
+                "DIP"
+            ],
+            "summary": "Five design principles that guide maintainable, extensible object-oriented code. Every LLD interviewer expects you to know these.",
+            "explanation": {
+                "overview": "SOLID was introduced by Robert C. Martin (Uncle Bob). These aren't rules — they're guidelines that help you write code that's easy to change, test, and extend.",
+                "key_concepts": [
+                    {
+                        "term": "S — Single Responsibility Principle (SRP)",
+                        "definition": "A class should have one and only one reason to change. If a class handles both user authentication AND email sending, changes to the email template format force changes to the authentication class. FIX: split into AuthService and EmailService. HOW TO IDENTIFY VIOLATIONS: if you describe a class and use 'AND' ('this class validates orders AND calculates shipping AND sends notifications'), it violates SRP. Each 'AND' is a separate responsibility. EDGE CASE: don't take this too far — splitting into 100 tiny classes with 1 method each creates 'class explosion' and is equally unmaintainable. Group cohesive operations that change together."
+                    },
+                    {
+                        "term": "O — Open/Closed Principle (OCP)",
+                        "definition": "Software entities should be open for extension but closed for modification. You should be able to add new behavior without changing existing code. EXAMPLE: a PaymentProcessor with if/else for each payment type (credit card, PayPal, Bitcoin) violates OCP — adding Apple Pay requires modifying the processor. FIX: use Strategy pattern — define a PaymentStrategy interface with process() method. Each payment type implements it. PaymentProcessor takes a PaymentStrategy and calls strategy.process(). Adding Apple Pay = new class, zero changes to existing code. INTERNALLY: this is achieved via polymorphism and dependency injection."
+                    },
+                    {
+                        "term": "L — Liskov Substitution Principle (LSP)",
+                        "definition": "Subtypes must be substitutable for their base types without altering program correctness. If function f(Bird b) works correctly, it must also work correctly when f(Penguin p) is called even though Penguin extends Bird. FAMOUS VIOLATION: Square extends Rectangle. Rectangle has setWidth() and setHeight() independently. Square.setWidth() must also set height (to maintain the square invariant). Code that assumes width and height are independent breaks. FIX: don't make Square extend Rectangle — they have different behavioral contracts. Use a common Shape interface instead. HOW TO CHECK: for every method in the base class, the subclass must: (1) accept the same or broader input (contravariance of parameters), (2) return the same or narrower output (covariance of return type), (3) throw the same or fewer exceptions, (4) maintain all invariants of the base class."
+                    },
+                    {
+                        "term": "I — Interface Segregation Principle (ISP)",
+                        "definition": "No client should be forced to depend on methods it does not use. FAT INTERFACE VIOLATION: interface Worker { void work(); void eat(); void sleep(); }. A Robot implements Worker but doesn't eat() or sleep(). FIX: split into Workable { work(); }, Eatable { eat(); }, Sleepable { sleep(); }. Human implements all three. Robot implements only Workable. INDUSTRY PRACTICE: in microservices, this translates to API design — don't create one monolithic /api/everything endpoint. Create focused endpoints: /api/users, /api/orders, /api/payments."
+                    },
+                    {
+                        "term": "D — Dependency Inversion Principle (DIP)",
+                        "definition": "High-level modules should not depend on low-level modules. Both should depend on abstractions. VIOLATION: OrderService directly instantiates MySQLDatabase — coupled to MySQL. Can't easily switch to PostgreSQL or mock for testing. FIX: OrderService depends on a DatabaseRepository interface. MySQLDatabase implements DatabaseRepository. At startup, inject the implementation: new OrderService(new MySQLDatabase()). For testing: new OrderService(new MockDatabase()). INTERNALLY: this is achieved via Inversion of Control (IoC) containers — Spring (Java), Django (Python), NestJS (Node.js) automatically inject dependencies based on type or name. This makes code testable (inject mocks), flexible (swap implementations), and loosely coupled."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch01.s03",
+            "title": "Design Patterns (GoF) — Essentials for Interviews",
+            "parent_id": "ch01",
+            "order": 3,
+            "tags": [
+                "design-patterns",
+                "creational",
+                "structural",
+                "behavioral",
+                "GoF"
+            ],
+            "summary": "The most frequently tested design patterns with internal mechanics, real-world examples, and interview scenarios.",
+            "explanation": {
+                "overview": "Design patterns are reusable solutions to common software design problems. The 'Gang of Four' (GoF) catalogued 23 patterns in 3 categories. You don't need to memorize all 23 — focus on the 8-10 that appear most often in interviews."
+            },
+            "children": [
+                {
+                    "id": "ch01.s03.creational",
+                    "title": "Creational Patterns",
+                    "parent_id": "ch01.s03",
+                    "order": 1,
+                    "tags": [
+                        "singleton",
+                        "factory",
+                        "builder",
+                        "prototype"
+                    ],
+                    "explanation": {
+                        "key_concepts": [
+                            {
+                                "term": "Singleton",
+                                "definition": "Ensure a class has exactly one instance globally. INTERNAL IMPLEMENTATION (thread-safe in Java): private static volatile Singleton instance; private constructor; public static Singleton getInstance() { if (instance == null) { synchronized(Singleton.class) { if (instance == null) instance = new Singleton(); } } return instance; }. This is double-checked locking — the first if avoids the expensive synchronized block on every call, the second if inside synchronized prevents two threads both creating instances. volatile ensures the instance is visible across threads (prevents instruction reordering). ALTERNATIVE: Java enum singleton — enum Singleton { INSTANCE; } — inherently thread-safe, serialization-safe, and prevents reflection attacks. USE CASES: database connection pool, logger, configuration manager, thread pool. EDGE CASE: Singleton makes unit testing hard (global state is hard to mock). FIX: use dependency injection instead — register the singleton in the IoC container and inject it. The DI container manages the lifecycle (singleton scope)."
+                            },
+                            {
+                                "term": "Factory Method",
+                                "definition": "Define an interface for creating objects but let subclasses decide which class to instantiate. EXAMPLE: interface NotificationFactory { Notification create(); }. SMSFactory creates SMSNotification. EmailFactory creates EmailNotification. PushFactory creates PushNotification. The calling code uses NotificationFactory.create() without knowing the concrete type. WHY: decouples creation logic from usage. Adding a new notification type (Slack) = new class + new factory, no changes to existing code (OCP). INDUSTRY USE: JDBC DriverManager.getConnection() — returns a Connection object without the caller knowing if it's MySQL, PostgreSQL, or Oracle underneath."
+                            },
+                            {
+                                "term": "Builder",
+                                "definition": "Construct complex objects step by step. Useful when a constructor would need 10+ parameters. EXAMPLE: User user = User.builder().name('Alice').email('a@b.com').age(30).role(ADMIN).build(); INTERNAL: the Builder class has the same fields as the target object + setter methods that return 'this' (fluent API). build() validates all required fields and creates the immutable target object. EDGE CASE: Java Lombok @Builder generates this automatically. Python dataclasses or attrs serve a similar purpose. USE CASES: SQL query builders, HTTP request builders, complex config objects."
+                            },
+                            {
+                                "term": "Prototype",
+                                "definition": "Create new objects by cloning an existing object rather than constructing from scratch. Useful when object creation is expensive (DB-heavy initialization, complex calculation). INTERNAL: implement Cloneable interface (Java) or __copy__/__deepcopy__ (Python). EDGE CASE: shallow copy vs deep copy — shallow copy shares references to nested objects (modifying nested object in clone affects original). Use deep copy when nested objects must be independent."
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "id": "ch01.s03.structural",
+                    "title": "Structural Patterns",
+                    "parent_id": "ch01.s03",
+                    "order": 2,
+                    "tags": [
+                        "adapter",
+                        "decorator",
+                        "facade",
+                        "proxy"
+                    ],
+                    "explanation": {
+                        "key_concepts": [
+                            {
+                                "term": "Adapter",
+                                "definition": "Convert the interface of a class into another interface clients expect. EXAMPLE: your code expects a MediaPlayer interface with play(filename). You have a third-party AdvancedMediaPlayer with playVLC() and playMP4(). An Adapter wraps AdvancedMediaPlayer and implements MediaPlayer, translating play() calls to the appropriate method. REAL WORLD: Java Arrays.asList() adapts an array into a List interface. JDBC adapts database-specific protocols into a common java.sql interface."
+                            },
+                            {
+                                "term": "Decorator",
+                                "definition": "Dynamically add behavior to an object without modifying its class. EXAMPLE: InputStream is = new BufferedInputStream(new FileInputStream('file.txt')). FileInputStream reads bytes. BufferedInputStream wraps it and adds buffering. You could further wrap with GZIPInputStream for compression. Each decorator implements the same interface and delegates to the wrapped object. INTERNAL: each decorator holds a reference to the next component in the chain. When read() is called, BufferedInputStream's read() fills a buffer by calling FileInputStream.read(), then serves from the buffer. WHY NOT inheritance? Inheritance is static (decided at compile time). Decorators are dynamic (decided at runtime) and composable — you can mix and match any combination."
+                            },
+                            {
+                                "term": "Facade",
+                                "definition": "Provide a simplified interface to a complex subsystem. EXAMPLE: a VideoConverter facade with method convert(filename, format) internally coordinates CodecFactory, AudioMixer, BitrateReader, VideoFile, and OggCompressionCodec — the client calls one method instead of orchestrating 5 classes. USE IN SYSTEM DESIGN: API Gateway is a facade — clients call one endpoint, the gateway orchestrates calls to multiple microservices."
+                            },
+                            {
+                                "term": "Proxy",
+                                "definition": "Provide a surrogate or placeholder for another object to control access. Types: (1) Protection Proxy — checks permissions before delegating (does the user have ADMIN role?). (2) Virtual Proxy — lazy initialization (load heavy object only when first accessed). (3) Caching Proxy — cache results of expensive calls. (4) Logging Proxy — log all method calls. REAL WORLD: Java's java.lang.reflect.Proxy, Spring AOP proxies (add transaction management, logging, security to methods without modifying them)."
+                            }
+                        ]
+                    },
+                    "children": []
+                },
+                {
+                    "id": "ch01.s03.behavioral",
+                    "title": "Behavioral Patterns",
+                    "parent_id": "ch01.s03",
+                    "order": 3,
+                    "tags": [
+                        "strategy",
+                        "observer",
+                        "command",
+                        "state",
+                        "chain-of-responsibility"
+                    ],
+                    "explanation": {
+                        "key_concepts": [
+                            {
+                                "term": "Strategy",
+                                "definition": "Define a family of algorithms, encapsulate each one, and make them interchangeable. EXAMPLE: SortStrategy interface with sort(List). Implementations: QuickSortStrategy, MergeSortStrategy, TimSortStrategy. The context (Sorter class) receives a strategy and delegates: sorter.setStrategy(new QuickSortStrategy()); sorter.sort(data);. At runtime, you can switch to MergeSortStrategy without changing Sorter. SYSTEM DESIGN USE: rate limiting algorithms (TokenBucketStrategy, SlidingWindowStrategy), compression algorithms, authentication methods, caching strategies. The Strategy pattern is the go-to answer for 'how do you make this configurable?'"
+                            },
+                            {
+                                "term": "Observer (Pub/Sub)",
+                                "definition": "When one object (subject) changes state, all registered observers are notified automatically. INTERNAL: Subject maintains a list of Observer references. On state change, iterates the list and calls observer.update(). Observers can register/unregister dynamically. EXAMPLE: a Stock object notifies all subscribed Dashboards and AlertServices when price changes. SYSTEM DESIGN PARALLEL: this is the conceptual basis for event-driven architectures — Kafka topics (subject) notifying consumer groups (observers). EDGE CASE: in synchronous observer pattern, a slow observer blocks all subsequent observers. FIX: notify observers asynchronously (thread pool or event queue)."
+                            },
+                            {
+                                "term": "Command",
+                                "definition": "Encapsulate a request as an object, allowing you to parameterize, queue, log, and undo operations. EXAMPLE: interface Command { void execute(); void undo(); }. LightOnCommand stores a reference to a Light and calls light.turnOn() in execute(), light.turnOff() in undo(). A RemoteControl stores a stack of executed commands and can undo() by popping and calling command.undo(). USE CASES: undo/redo in text editors, transaction logging, task queuing (each queued task is a Command object)."
+                            },
+                            {
+                                "term": "State",
+                                "definition": "Allow an object to change its behavior when its internal state changes. The object appears to change its class. EXAMPLE: a VendingMachine has states: NoCoin, HasCoin, Dispensing, SoldOut. Each state is a separate class implementing VendingMachineState interface. In NoCoin state, insertCoin() transitions to HasCoin. In HasCoin, pressButton() transitions to Dispensing. Each state handles the same events differently — no giant if/else blocks. INTERNAL: the context (VendingMachine) holds a reference to the current state object. All event methods delegate to currentState.handle(). State transitions: currentState.handle() returns the next state, or directly sets context.setState(new HasCoinState())."
+                            },
+                            {
+                                "term": "Chain of Responsibility",
+                                "definition": "Pass a request along a chain of handlers. Each handler decides to process the request or pass it to the next handler. EXAMPLE: HTTP middleware chain — AuthHandler → RateLimitHandler → LogHandler → BusinessLogicHandler. AuthHandler checks token — if invalid, returns 401. If valid, passes to RateLimitHandler. RateLimitHandler checks quota — if exceeded, returns 429. If OK, passes to LogHandler, etc. SYSTEM DESIGN USE: Java servlet filters, Express.js middleware, NGINX request processing pipeline, Netty channel pipeline."
+                            }
+                        ]
+                    },
+                    "children": []
+                }
+            ]
+        },
+        {
+            "id": "ch01.s04",
+            "title": "LLD Interview Framework",
+            "parent_id": "ch01",
+            "order": 4,
+            "tags": [
+                "LLD-interview",
+                "framework",
+                "class-diagram"
+            ],
+            "summary": "A structured 6-step approach to ace any low-level design interview.",
+            "explanation": {
+                "step_by_step": [
+                    {
+                        "step": 1,
+                        "title": "Clarify Requirements & Constraints",
+                        "detail": "Ask: Who are the actors? (users, admins, system). What are the core use cases? What's the scale? (single machine or distributed). Any real-time requirements? Example for 'Design a Parking Lot': How many floors/spots? Spot types (compact, regular, large)? Payment? Entry/exit gates? Hourly vs flat rate?"
+                    },
+                    {
+                        "step": 2,
+                        "title": "Identify Core Entities",
+                        "detail": "List the nouns: ParkingLot, Floor, ParkingSpot, Vehicle (Car, Truck, Motorcycle), Ticket, Payment, EntryGate, ExitGate. Each becomes a class."
+                    },
+                    {
+                        "step": 3,
+                        "title": "Define APIs / Interfaces",
+                        "detail": "What operations exist? parkVehicle(vehicle) → Ticket, unparkVehicle(ticket) → Payment, getAvailableSpots(type) → int. Define input/output for each."
+                    },
+                    {
+                        "step": 4,
+                        "title": "Establish Relationships",
+                        "detail": "ParkingLot HAS-MANY Floors (composition). Floor HAS-MANY ParkingSpots (composition). ParkingSpot HAS-A Vehicle (association, nullable). Ticket references ParkingSpot and Vehicle. Use UML notation."
+                    },
+                    {
+                        "step": 5,
+                        "title": "Apply Design Patterns",
+                        "detail": "Strategy pattern for payment (CashPayment, CardPayment, UPIPayment). Factory for vehicle creation. Singleton for ParkingLot (one lot). Observer for spot availability notifications."
+                    },
+                    {
+                        "step": 6,
+                        "title": "Code with Concurrency & Edge Cases",
+                        "detail": "Two cars arriving simultaneously trying to park in the last spot — use synchronized or CAS (compare-and-swap) on spot.assignVehicle(). Handle: lot full, invalid ticket, payment failure, entry/exit gate malfunction."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Design Patterns: Elements of Reusable OO Software (GoF Book)",
+            "url": "https://www.amazon.com/Design-Patterns-Elements-Reusable-Object-Oriented/dp/0201633612"
+        },
+        {
+            "title": "Head First Design Patterns",
+            "url": "https://www.amazon.com/Head-First-Design-Patterns-Brain-Friendly/dp/0596007124"
+        },
+        {
+            "title": "Clean Code — Robert C. Martin",
+            "url": "https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882"
+        },
+        {
+            "title": "Refactoring.Guru — Design Patterns",
+            "url": "https://refactoring.guru/design-patterns"
+        }
+    ]
+}

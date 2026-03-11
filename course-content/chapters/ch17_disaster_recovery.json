@@ -1,0 +1,151 @@
+{
+    "id": "ch17",
+    "title": "Disaster Recovery, Backup & Data Integrity",
+    "parent_id": null,
+    "order": 17,
+    "tags": [
+        "DR",
+        "backup",
+        "RPO",
+        "RTO",
+        "multi-region",
+        "data-integrity",
+        "checksums"
+    ],
+    "summary": "Disaster recovery planning (RPO/RTO), backup strategies, multi-region architecture, data migration, data integrity verification, and incident response.",
+    "explanation": {
+        "overview": "Disasters happen: datacenter fires, region-wide outages, ransomware attacks, accidental data deletion, database corruption. Disaster Recovery (DR) planning ensures your system can recover from these events within acceptable time (RTO) and data loss (RPO) bounds. This is the ultimate test of system design — everything you build must survive the worst-case scenario."
+    },
+    "children": [
+        {
+            "id": "ch17.s01",
+            "title": "RPO, RTO & Recovery Strategies",
+            "parent_id": "ch17",
+            "order": 1,
+            "tags": [
+                "RPO",
+                "RTO",
+                "hot-standby",
+                "warm-standby",
+                "pilot-light"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "RPO (Recovery Point Objective)",
+                        "definition": "Maximum acceptable data loss measured in time. RPO = 0: no data loss (synchronous replication to standby). RPO = 1 hour: can lose up to 1 hour of data (hourly backups or near-sync replication). RPO = 24 hours: can lose up to a day (daily backups). COST: lower RPO = more expensive (synchronous replication costs throughput and latency). RPO directly determines your backup/replication frequency."
+                    },
+                    {
+                        "term": "RTO (Recovery Time Objective)",
+                        "definition": "Maximum acceptable downtime. RTO = 0: no downtime (active-active multi-region). RTO = 15 minutes: failover to hot standby. RTO = 4 hours: restore from backup to warm standby. RTO = 24 hours: rebuild from backups. COST: lower RTO = more expensive (maintaining hot standby infrastructure that's idle during normal operation)."
+                    },
+                    {
+                        "term": "DR Strategies (cost: low → high)",
+                        "definition": "Backup & Restore (RPO: hours, RTO: hours): take periodic backups to S3/GCS. On disaster, provision new infrastructure and restore from backups. Cheapest but slowest recovery. Pilot Light (RPO: minutes, RTO: minutes-hours): core infrastructure always running in DR region (database replication, basic networking). On disaster, scale up compute (start app servers, scale ASG). Warm Standby (RPO: seconds, RTO: minutes): fully running DR region at reduced capacity (fewer instances). On disaster, scale to full capacity and redirect traffic. Hot Standby / Active-Active (RPO: 0, RTO: ~0): both regions actively serving traffic. Data replicated synchronously or near-synchronously. On disaster, the surviving region handles all traffic. Most expensive but zero data loss and near-zero downtime. USED BY: banks (hot standby for core banking), large e-commerce (active-active for zero downtime)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch17.s02",
+            "title": "Backup Strategies",
+            "parent_id": "ch17",
+            "order": 2,
+            "tags": [
+                "backup",
+                "full",
+                "incremental",
+                "differential",
+                "snapshot"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Backup Types",
+                        "definition": "Full Backup: complete copy of all data. Simple to restore (just load the full backup). Expensive in storage and time. Typically run weekly. Incremental Backup: only data changed since the LAST backup (full or incremental). Small and fast. Restore requires: full backup + all incremental backups in order. If any incremental is corrupted, all subsequent backups are unusable. Typically run daily or hourly. Differential Backup: only data changed since the LAST FULL backup. Larger than incremental (accumulates over time) but easier to restore (full + latest differential). Snapshot (Database/Storage level): point-in-time copy using Copy-on-Write. Near-instantaneous (only metadata is copied; data pages are shared). When original data is modified, the old page is preserved (CoW). Used by: EBS snapshots, ZFS snapshots, LVM snapshots, RDS automated snapshots."
+                    },
+                    {
+                        "term": "3-2-1 Backup Rule",
+                        "definition": "3 copies of data (1 primary + 2 backups). 2 different storage types (SSD + tape, or EBS + S3). 1 offsite copy (different region/cloud provider). This protects against: hardware failure (copy 2), facility disaster (offsite copy), and ransomware (if attacker encrypts primary + first backup, offsite is safe). IMMUTABLE BACKUPS: S3 Object Lock (WORM — Write Once Read Many) prevents anyone from deleting/modifying backups for a retention period. Critical for ransomware protection."
+                    },
+                    {
+                        "term": "Testing Backups",
+                        "definition": "A backup is worthless if you can't restore from it. REGULARLY test: full restore to a separate environment, verify data integrity (checksums), measure actual restore time (does it meet your RTO?). Chaos engineering for backups: once a quarter, simulate a disaster and restore from backups. If you haven't tested your backups, you don't have backups — you have hope."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch17.s03",
+            "title": "Data Integrity & Consistency Verification",
+            "parent_id": "ch17",
+            "order": 3,
+            "tags": [
+                "checksums",
+                "reconciliation",
+                "audit-log"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "End-to-End Checksums",
+                        "definition": "Every data write includes a checksum (CRC32, SHA-256). On read, recompute the checksum and compare. If mismatch → data corruption detected (bit rot, disk failure, bug). S3: Content-MD5 header for upload verification. PostgreSQL: data page checksums (data_checksums = on — detects page-level corruption). ZFS: checksums every block with automatic repair from redundant copies."
+                    },
+                    {
+                        "term": "Reconciliation Jobs",
+                        "definition": "Periodic background processes that compare data from two sources and fix discrepancies. Example: compare order count in Order Service DB vs count of payment records in Payment Service DB. If mismatch, flag for investigation. IMPLEMENTATION: nightly cron job that: (1) queries source A for all records in date range, (2) queries source B for matching records, (3) identifies mismatches (missing, extra, or differing records), (4) stores discrepancies in a reconciliation report, (5) optionally auto-corrects (if trusted source is clear). USED BY: financial systems (bank balance reconciliation), e-commerce (inventory audit), data pipelines (row count verification between source and destination)."
+                    },
+                    {
+                        "term": "Immutable Audit Logs",
+                        "definition": "Append-only log of all critical operations: who did what, when, from where. Never modified or deleted. Store in a tamper-proof location (S3 with Object Lock, append-only database table with no DELETE/UPDATE permissions). Required for: financial compliance (SOX), healthcare (HIPAA), any system where accountability matters. IMPLEMENTATION: every API call that modifies data writes to an audit log: {timestamp, user_id, action, resource, old_value, new_value, ip_address, result}."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch17.s04",
+            "title": "Multi-Region Architecture",
+            "parent_id": "ch17",
+            "order": 4,
+            "tags": [
+                "multi-region",
+                "active-active",
+                "conflict-resolution"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Active-Passive Multi-Region",
+                        "definition": "Primary region handles all traffic. Secondary region receives replicated data (async) and is on standby. On primary failure, DNS failover routes traffic to secondary. RTO: minutes (DNS propagation + failover). RPO: seconds (replication lag). CHEAPER than active-active. Suitable when a few minutes of downtime is acceptable."
+                    },
+                    {
+                        "term": "Active-Active Multi-Region",
+                        "definition": "Both regions serve traffic simultaneously. Data replicated bi-directionally. RTO ≈ 0 (no failover needed — surviving region handles all traffic). RPO ≈ 0 (synchronous or near-synchronous replication). CHALLENGES: write conflicts (two regions modify same record). Resolution: LWW (Last Writer Wins — risk data loss), CRDTs (Conflict-free Replicated Data Types — merge operations mathematically), application-level merge (domain-specific logic). USED BY: Google Spanner (globally consistent via TrueTime), CockroachDB (multi-region with serializable isolation), Amazon DynamoDB Global Tables (active-active with LWW). DESIGN TIP: partition data by user region (US users write to US, EU users write to EU). Most writes are region-local → minimal conflicts. Cross-region reads for data from other regions."
+                    },
+                    {
+                        "term": "Data Migration Strategies",
+                        "definition": "Dual-Write: write to both old and new systems simultaneously. DANGEROUS: no atomicity guarantee — one write can succeed while the other fails. Prefer CDC. Change Data Capture (CDC): Debezium captures every write from the old DB and streams to the new DB via Kafka. Once new DB is fully synced, cut over. Safest approach — keeps both systems in sync. Shadow Reads: after migration, read from both old and new systems, compare results. If they match, the new system is correct. If not, investigate discrepancies before cutover."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "AWS Well-Architected Framework — Reliability Pillar",
+            "url": "https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/welcome.html"
+        },
+        {
+            "title": "Google SRE — Disaster Recovery Planning",
+            "url": "https://sre.google/sre-book/managing-incidents/"
+        },
+        {
+            "title": "AWS Multi-Region Architectures",
+            "url": "https://aws.amazon.com/solutions/implementations/multi-region-application-architecture/"
+        }
+    ]
+}

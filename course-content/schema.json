@@ -1,0 +1,274 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SystemDesignTopic",
+    "description": "Recursive, infinitely extensible topic node. Every topic can have children (subtopics of subtopics) and cross-links for redirection.",
+    "type": "object",
+    "required": [
+        "id",
+        "title",
+        "children"
+    ],
+    "properties": {
+        "id": {
+            "type": "string",
+            "description": "Unique dot-notated ID e.g. ch07.s02.cache_aside"
+        },
+        "title": {
+            "type": "string"
+        },
+        "parent_id": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "description": "Parent topic ID for tree navigation"
+        },
+        "order": {
+            "type": "integer",
+            "description": "Sort order among siblings"
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "summary": {
+            "type": "string",
+            "description": "1-2 sentence overview"
+        },
+        "explanation": {
+            "type": "object",
+            "properties": {
+                "overview": {
+                    "type": "string"
+                },
+                "how_it_works_internally": {
+                    "type": "string",
+                    "description": "Deep internals — data structures, algorithms, event loops etc."
+                },
+                "step_by_step": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "step": {
+                                "type": "integer"
+                            },
+                            "title": {
+                                "type": "string"
+                            },
+                            "detail": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "key_concepts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "term": {
+                                "type": "string"
+                            },
+                            "definition": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "examples": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string"
+                            },
+                            "description": {
+                                "type": "string"
+                            },
+                            "code": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "use_cases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "system": {
+                                "type": "string"
+                            },
+                            "why": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "configurable_params": {
+            "type": "array",
+            "description": "Things you can tune — knobs that change behaviour",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "default": {
+                        "type": "string"
+                    },
+                    "effect": {
+                        "type": "string"
+                    },
+                    "tradeoff": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "advanced_tweaks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "technique": {
+                        "type": "string"
+                    },
+                    "when_to_use": {
+                        "type": "string"
+                    },
+                    "how": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "tradeoffs": {
+            "type": "object",
+            "properties": {
+                "pros": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "when_to_use": {
+                    "type": "string"
+                },
+                "when_to_avoid": {
+                    "type": "string"
+                }
+            }
+        },
+        "common_mistakes": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "interview_tips": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "q": {
+                        "type": "string"
+                    },
+                    "a": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "diagram": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "description": "Excalidraw-compatible diagram or mermaid/ascii",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "excalidraw",
+                        "mermaid",
+                        "ascii"
+                    ]
+                },
+                "title": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "description": "Excalidraw JSON or mermaid source"
+                }
+            }
+        },
+        "links": {
+            "type": "array",
+            "description": "Cross-links to other topics (redirection) or external URLs",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "target_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Internal topic ID to link to"
+                    },
+                    "url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "External URL"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "relationship": {
+                        "type": "string",
+                        "description": "e.g. prerequisite, related, deep-dive, alternative"
+                    }
+                }
+            }
+        },
+        "references": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "children": {
+            "type": "array",
+            "description": "RECURSIVE — subtopics of subtopics, infinitely nestable. Each child follows this same schema.",
+            "items": {
+                "$ref": "#"
+            }
+        }
+    }
+}

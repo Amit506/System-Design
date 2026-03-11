@@ -1,0 +1,176 @@
+{
+    "course_title": "The Ultimate System Design Masterclass",
+    "version": "2.0",
+    "schema": "./schema.json",
+    "description": "Complete system design curriculum. Each chapter and case study is a separate JSON file following the recursive schema. Add new topics by adding children at any depth level.",
+    "how_to_extend": "To add a new subtopic, insert a new object in the 'children' array of any topic at any level. Every child follows the same schema recursively. Use 'links' array to cross-reference between topics.",
+    "chapters": [
+        {
+            "id": "ch00",
+            "title": "Introduction & How to Approach System Design",
+            "file": "./chapters/ch00_introduction.json"
+        },
+        {
+            "id": "ch01",
+            "title": "OOP & Low-Level Design Foundations",
+            "file": "./chapters/ch01_oop_lld.json"
+        },
+        {
+            "id": "ch02",
+            "title": "Key Characteristics of Distributed Systems",
+            "file": "./chapters/ch02_distributed_systems.json"
+        },
+        {
+            "id": "ch03",
+            "title": "Networking & Communication Protocols",
+            "file": "./chapters/ch03_networking.json"
+        },
+        {
+            "id": "ch04",
+            "title": "Load Balancing, Proxies & CDN",
+            "file": "./chapters/ch04_load_balancing.json"
+        },
+        {
+            "id": "ch05",
+            "title": "Databases & Data Modeling",
+            "file": "./chapters/ch05_databases.json"
+        },
+        {
+            "id": "ch06",
+            "title": "Indexing & Query Optimization",
+            "file": "./chapters/ch06_indexing.json"
+        },
+        {
+            "id": "ch07",
+            "title": "Caching",
+            "file": "./chapters/ch07_caching.json"
+        },
+        {
+            "id": "ch08",
+            "title": "Sharding, Partitioning & Consistent Hashing",
+            "file": "./chapters/ch08_sharding.json"
+        },
+        {
+            "id": "ch09",
+            "title": "CAP Theorem, Consensus & Distributed Systems Theory",
+            "file": "./chapters/ch09_cap_consensus.json"
+        },
+        {
+            "id": "ch10",
+            "title": "Message Queues, Streams & Event-Driven Patterns",
+            "file": "./chapters/ch10_messaging.json"
+        },
+        {
+            "id": "ch11",
+            "title": "Concurrency & Synchronization",
+            "file": "./chapters/ch11_concurrency.json"
+        },
+        {
+            "id": "ch12",
+            "title": "Rate Limiting",
+            "file": "./chapters/ch12_rate_limiting.json"
+        },
+        {
+            "id": "ch13",
+            "title": "Resiliency, Security & Architecture Patterns",
+            "file": "./chapters/ch13_resiliency.json"
+        },
+        {
+            "id": "ch14",
+            "title": "Advanced Algorithms for System Design",
+            "file": "./chapters/ch14_algorithms.json"
+        },
+        {
+            "id": "ch15",
+            "title": "Service Discovery, Gossip & Failure Detection",
+            "file": "./chapters/ch15_service_discovery.json"
+        },
+        {
+            "id": "ch16",
+            "title": "DevOps, Infrastructure, Kubernetes & Observability",
+            "file": "./chapters/ch16_devops.json"
+        },
+        {
+            "id": "ch17",
+            "title": "Disaster Recovery, Multi-Region & Data Architecture",
+            "file": "./chapters/ch17_disaster_recovery.json"
+        }
+    ],
+    "case_studies": [
+        {
+            "id": "cs01",
+            "title": "Design a URL Shortener (Bitly)",
+            "file": "./case-studies/cs01_url_shortener.json"
+        },
+        {
+            "id": "cs02",
+            "title": "Design a Web Crawler",
+            "file": "./case-studies/cs02_web_crawler.json"
+        },
+        {
+            "id": "cs03",
+            "title": "Design Twitter / X Feed",
+            "file": "./case-studies/cs03_twitter_feed.json"
+        },
+        {
+            "id": "cs04",
+            "title": "Design WhatsApp / Discord",
+            "file": "./case-studies/cs04_whatsapp.json"
+        },
+        {
+            "id": "cs05",
+            "title": "Design Ticketmaster",
+            "file": "./case-studies/cs05_ticketmaster.json"
+        },
+        {
+            "id": "cs06",
+            "title": "Design YouTube / Netflix",
+            "file": "./case-studies/cs06_youtube.json"
+        },
+        {
+            "id": "cs07",
+            "title": "Design Uber / Lyft",
+            "file": "./case-studies/cs07_uber.json"
+        },
+        {
+            "id": "cs08",
+            "title": "Design a Rate Limiter",
+            "file": "./case-studies/cs08_rate_limiter.json"
+        },
+        {
+            "id": "cs09",
+            "title": "Design a Distributed Cache (Redis)",
+            "file": "./case-studies/cs09_distributed_cache.json"
+        },
+        {
+            "id": "cs10",
+            "title": "Design Google Docs / Figma",
+            "file": "./case-studies/cs10_google_docs.json"
+        },
+        {
+            "id": "cs11",
+            "title": "Design Stripe (Payment System)",
+            "file": "./case-studies/cs11_stripe.json"
+        },
+        {
+            "id": "cs12",
+            "title": "Design Dropbox / Google Drive",
+            "file": "./case-studies/cs12_dropbox.json"
+        },
+        {
+            "id": "cs13",
+            "title": "Design YouTube Top-K",
+            "file": "./case-studies/cs13_top_k.json"
+        },
+        {
+            "id": "cs14",
+            "title": "Design an Ad Click Aggregator",
+            "file": "./case-studies/cs14_ad_click_aggregator.json"
+        },
+        {
+            "id": "cs15",
+            "title": "Design Robinhood (Stock Trading)",
+            "file": "./case-studies/cs15_robinhood.json"
+        }
+    ]
+}

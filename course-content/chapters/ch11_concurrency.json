@@ -1,0 +1,102 @@
+{
+    "id": "ch11",
+    "title": "Concurrency & Synchronization",
+    "parent_id": null,
+    "order": 11,
+    "tags": [
+        "concurrency",
+        "mutex",
+        "semaphore",
+        "deadlock",
+        "thread-pool",
+        "CAS"
+    ],
+    "summary": "Concurrency primitives (mutex, semaphore, spinlock, RW-lock), Java memory model, concurrency patterns (producer-consumer, reactor), deadlock detection, and distributed transactions.",
+    "explanation": {
+        "overview": "Concurrency is about multiple operations executing in overlapping time periods. Parallelism is about executing simultaneously on multiple cores. In system design, concurrency appears at every level: multiple threads handling requests, multiple servers processing jobs, multiple database clients competing for rows. Understanding concurrency primitives lets you reason about race conditions, deadlocks, and correctness.",
+        "how_it_works_internally": "At the CPU level, a single core can only execute one instruction at a time. The OS scheduler rapidly switches between threads (context switch ~1-10µs), creating the illusion of simultaneous execution. On multi-core CPUs, true parallelism occurs. The challenge: when multiple threads access shared mutable state without synchronization, you get race conditions — the result depends on unpredictable timing."
+    },
+    "children": [
+        {
+            "id": "ch11.s01",
+            "title": "Concurrency Primitives — Internals",
+            "parent_id": "ch11",
+            "order": 1,
+            "tags": [
+                "mutex",
+                "semaphore",
+                "spinlock",
+                "CAS",
+                "read-write-lock"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Mutex (Mutual Exclusion)",
+                        "definition": "Binary lock: owned by one thread at a time. Other threads calling lock() are put to sleep (blocked) by the OS until the owner calls unlock(). INTERNAL: on Linux, mutex uses futex (fast userspace mutex). The fast path (no contention) is a single atomic CAS (Compare-And-Swap) instruction in userspace — no kernel involvement (~25ns). Only on contention does it syscall into the kernel to sleep the thread. Reentrant mutex: the same thread can acquire it multiple times (maintains a count, must release same number of times). USE: protecting shared data structures (hash maps, queues, counters)."
+                    },
+                    {
+                        "term": "Semaphore",
+                        "definition": "Counter-based synchronization. Initialized with count N. acquire() decrements count. If count < 0, thread blocks. release() increments count. If a thread is waiting, wake it. Binary semaphore (N=1) ≈ mutex but not owned by any thread (any thread can release). Counting semaphore (N>1): limit concurrent access. EXAMPLE: connection pool of 10 connections — semaphore(10). Each thread acquires before using a connection, releases after."
+                    },
+                    {
+                        "term": "Spinlock",
+                        "definition": "Loop (spin) checking a flag via atomic CAS until it succeeds. Does NOT put the thread to sleep — wastes CPU cycles while waiting. WHEN TO USE: only when the critical section is very short (< 1µs) and context switch cost (1-10µs) exceeds expected wait time. Linux kernel uses spinlocks for short sections where sleeping is not allowed (interrupt handlers). NEVER use in application code for long waits."
+                    },
+                    {
+                        "term": "CAS (Compare-And-Swap)",
+                        "definition": "Atomic CPU instruction: CAS(addr, expected, new) — if *addr == expected, set *addr = new and return true. Otherwise return false. Foundation of all lock-free data structures. Java AtomicInteger.compareAndSet(), C++ std::atomic. LOCK-FREE COUNTER: instead of mutex { counter++ }, do: loop { old = counter; if CAS(counter, old, old+1) break; }. No blocking, no sleeping — if another thread modified counter between read and CAS, CAS fails and we retry. ABA problem: value changes A→B→A and CAS can't detect it. FIX: use versioned CAS (AtomicStampedReference in Java)."
+                    },
+                    {
+                        "term": "Read-Write Lock",
+                        "definition": "Allows multiple concurrent readers OR one exclusive writer. Readers don't block other readers (shared mode), but a writer blocks all readers and writers (exclusive mode). USE: read-heavy data structures (config, caches read 100× more than written). INTERNAL: maintains reader_count + writer flag. reader.lock(): if no writer, increment reader_count. writer.lock(): wait for reader_count=0 and no other writer. STARVATION: writers can starve if readers keep arriving. FIX: fair RW lock (writers get priority after waiting)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch11.s02",
+            "title": "Concurrency Patterns & Deadlock",
+            "parent_id": "ch11",
+            "order": 2,
+            "tags": [
+                "producer-consumer",
+                "thread-pool",
+                "reactor",
+                "deadlock"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Producer-Consumer",
+                        "definition": "Producers put items into a bounded buffer (BlockingQueue). Consumers take items from the buffer. Buffer decouples production rate from consumption rate. INTERNAL: BlockingQueue uses a mutex + two condition variables (not_empty, not_full). put(): lock → if full, wait(not_full) → insert → signal(not_empty) → unlock. take(): lock → if empty, wait(not_empty) → remove → signal(not_full) → unlock. Java: ArrayBlockingQueue, LinkedBlockingQueue. USE: request processing (web server puts requests in queue, worker threads consume), Kafka consumer pattern."
+                    },
+                    {
+                        "term": "Thread Pool",
+                        "definition": "Pre-create a fixed number of threads. Tasks are submitted to a queue; idle threads pick up tasks. Prevents thread explosion (creating a new thread per request = 10K threads = excessive context switching + OOM). Java: ExecutorService with ThreadPoolExecutor(coreSize, maxSize, keepAlive, queue). CONFIGURABLE: corePoolSize (always running), maximumPoolSize (upper limit), queueCapacity (buffer), rejectionPolicy (AbortPolicy throws exception, CallerRunsPolicy runs on submitter's thread). SIZING: CPU-bound tasks: threads = num_cores. I/O-bound tasks: threads = num_cores × (1 + wait_time/compute_time). If compute=5ms, wait=50ms: threads = 8 × (1+10) = 88."
+                    },
+                    {
+                        "term": "Reactor Pattern (Event Loop)",
+                        "definition": "Single thread runs an event loop that multiplexes I/O across many connections. Used by: Node.js, Redis, NGINX, Netty. HOW: one thread calls epoll_wait() → gets list of ready sockets → processes each → loops. Non-blocking I/O: if an operation would block (disk read, network write), register a callback and continue processing other events. The callback is invoked when the operation completes. ADVANTAGE: handles thousands of concurrent connections with one thread (no context switching overhead). DISADVANTAGE: CPU-bound work blocks the entire event loop. FIX: offload CPU-heavy work to worker threads or a thread pool."
+                    },
+                    {
+                        "term": "Deadlock",
+                        "definition": "Two or more threads are waiting for each other to release locks, creating a cycle. Four necessary conditions (Coffman): (1) Mutual Exclusion: resource held exclusively. (2) Hold and Wait: thread holds one lock while waiting for another. (3) No Preemption: locks can't be forcibly taken. (4) Circular Wait: thread A waits for B, B waits for A. PREVENTION: break any one condition. Lock ordering: always acquire locks in a fixed global order (by lock ID). Breaks circular wait. Timeout: tryLock(timeout) — give up after N ms. Breaks hold-and-wait. DETECTION: build a wait-for graph (nodes = threads, edge = A waits for B's lock). If the graph has a cycle, deadlock exists. Kill one thread in the cycle (victim selection)."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Java Concurrency in Practice — Brian Goetz",
+            "url": "https://jcip.net/"
+        },
+        {
+            "title": "The Little Book of Semaphores",
+            "url": "https://greenteapress.com/wp/semaphores/"
+        }
+    ]
+}

@@ -1,0 +1,186 @@
+{
+    "id": "ch02",
+    "title": "Key Characteristics of Distributed Systems",
+    "parent_id": null,
+    "order": 2,
+    "tags": [
+        "distributed-systems",
+        "scalability",
+        "availability",
+        "reliability",
+        "consistency"
+    ],
+    "summary": "The fundamental properties that define distributed systems — scalability, availability, reliability, consistency, and the trade-offs between them.",
+    "explanation": {
+        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties.",
+        "how_it_works_internally": "Distributed systems face challenges that monolithic systems don't: network is unreliable (packets drop, latency spikes), clocks are unsynchronized (each machine has slightly different time), nodes fail independently (one server crashes while others continue), and there's no shared memory (data must be explicitly communicated). These realities force you to make design trade-offs at every layer."
+    },
+    "children": [
+        {
+            "id": "ch02.s01",
+            "title": "Scalability",
+            "parent_id": "ch02",
+            "order": 1,
+            "tags": [
+                "horizontal-scaling",
+                "vertical-scaling",
+                "elasticity"
+            ],
+            "summary": "The ability of a system to handle increasing load by adding resources.",
+            "explanation": {
+                "overview": "Scalability is the system's capacity to cope with increased demand. A scalable system maintains performance (latency, throughput) as load grows — more users, more data, more requests.",
+                "key_concepts": [
+                    {
+                        "term": "Vertical Scaling (Scale Up)",
+                        "definition": "Add more resources to a single machine — more CPU, RAM, SSD, faster network. EXAMPLE: upgrade from 16 GB RAM to 128 GB, or 4-core to 64-core CPU. PROS: simple (no code changes), no distributed system complexity, data consistency is easy (single machine). CONS: hardware limits (you can't buy a machine with 100 TB RAM), cost grows exponentially (a 64-core server costs more than 16× a 4-core), single point of failure (if this machine dies, everything dies). INDUSTRY USE: databases often scale vertically first — a beefier Postgres server can handle a lot more before you need sharding. Amazon RDS instances go up to 24 TB RAM and 128 vCPUs."
+                    },
+                    {
+                        "term": "Horizontal Scaling (Scale Out)",
+                        "definition": "Add more machines to the pool. Each machine handles a portion of the load. EXAMPLE: instead of 1 server handling 10K QPS, use 10 servers each handling 1K QPS behind a load balancer. PROS: practically unlimited scale (just add more machines), fault tolerant (one machine fails, others continue), cost-effective (commodity hardware). CONS: code must be stateless (or state must be externalized to a shared store like Redis), distributed systems complexity (data partitioning, replication, consistency), network communication overhead. INDUSTRY STANDARD: application servers should ALWAYS be designed for horizontal scaling from day one. Store all state in databases/caches, make servers stateless, put a load balancer in front."
+                    },
+                    {
+                        "term": "Elasticity",
+                        "definition": "The ability to automatically add or remove resources based on current demand. Cloud auto-scaling: AWS Auto Scaling Groups monitor CPU/memory metrics and add/remove EC2 instances. Kubernetes HPA (Horizontal Pod Autoscaler) adjusts pod count based on CPU or custom metrics. CONFIGURABLE: min instances (floor — always running), max instances (ceiling — cost control), scaling metric (CPU > 70%, QPS > 1000, queue depth > 100), cooldown period (wait 300s after scaling before evaluating again, prevents oscillation). EDGE CASE: cold start — new instances take time to boot, load code, warm caches. During traffic spikes, there's a lag between the spike and the new capacity. FIX: keep a buffer of warm standby instances, or use provisioned capacity."
+                    }
+                ],
+                "examples": [
+                    {
+                        "title": "Netflix Scaling Pattern",
+                        "description": "Netflix serves 250M+ subscribers. Their microservices (100+) run on thousands of EC2 instances with auto-scaling. During peak hours (8-11 PM), auto-scaling adds instances. At 3 AM, it removes them. Databases use a mix: Aurora (relational, vertically scaled up to db.r5.24xlarge) for user accounts, Cassandra (horizontally scaled, 1000+ nodes) for viewing history/recommendations.",
+                        "code": ""
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch02.s02",
+            "title": "Availability",
+            "parent_id": "ch02",
+            "order": 2,
+            "tags": [
+                "availability",
+                "SLA",
+                "uptime",
+                "redundancy",
+                "failover"
+            ],
+            "summary": "The percentage of time a system is operational and accessible.",
+            "explanation": {
+                "overview": "Availability = uptime / (uptime + downtime). It's usually expressed as 'nines': 99% (two nines) = 3.65 days downtime/year. 99.9% (three nines) = 8.76 hours. 99.99% (four nines) = 52.6 minutes. 99.999% (five nines) = 5.26 minutes.",
+                "how_it_works_internally": "Achieving high availability requires eliminating single points of failure (SPOF) at every layer. For each component, ask: 'if this dies, does the system stop working?' If yes, add redundancy. Load Balancer SPOF: deploy 2 LBs with floating IP (VIP) and keepalived/VRRP failover. App Server SPOF: run N instances behind LB; N-1 can handle full load. Database SPOF: primary + synchronous standby replica with automatic failover (Patroni for Postgres, RDS Multi-AZ). Cache SPOF: Redis Sentinel or Cluster mode for auto-failover. DNS SPOF: use multiple DNS providers (Cloudflare + Route 53).",
+                "key_concepts": [
+                    {
+                        "term": "SLA vs SLO vs SLI",
+                        "definition": "SLI (Service Level Indicator): the actual measurement (e.g., request success rate = 99.95% this month). SLO (Service Level Objective): the target (e.g., 'availability must be ≥ 99.9%'). SLA (Service Level Agreement): the contract with customers (e.g., 'if availability drops below 99.9%, customer gets service credits'). Google's SRE book: alert when burning through your error budget too fast, not on individual incidents."
+                    },
+                    {
+                        "term": "Availability in Series vs Parallel",
+                        "definition": "Components in series (sequential dependency): overall = A1 × A2 × A3. If each is 99.9%, overall = 99.7%. Components in parallel (redundant): overall = 1 - (1-A1)(1-A2). Two 99.9% components in parallel = 1 - 0.001² = 99.9999%. IMPLICATION: minimize sequential dependencies (reduce the critical path). Add redundancy (parallel components) for each critical component."
+                    },
+                    {
+                        "term": "Failover Strategies",
+                        "definition": "Active-Passive (warm standby): primary handles traffic, standby replicates data. On primary failure, standby takes over (seconds to minutes). Active-Active: both nodes serve traffic simultaneously. On failure of one, the other absorbs its load. More complex (must handle conflicts) but zero-downtime failover. Multi-Region Active-Active: deploy in 2+ AWS regions. Route 53 health checks route traffic away from unhealthy regions automatically. This is how AWS, Google, and Netflix achieve five nines."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch02.s03",
+            "title": "Reliability & Fault Tolerance",
+            "parent_id": "ch02",
+            "order": 3,
+            "tags": [
+                "reliability",
+                "fault-tolerance",
+                "MTBF",
+                "MTTR",
+                "chaos-engineering"
+            ],
+            "summary": "The ability of a system to continue functioning correctly even when components fail.",
+            "explanation": {
+                "overview": "Reliability means the system performs its intended function correctly under stated conditions for a specified period. Fault tolerance is a subset — continuing to operate (possibly at degraded capacity) when components fail. The key insight: failures are inevitable at scale. With 10,000 servers, several fail every day. A reliable system is designed EXPECTING failure.",
+                "key_concepts": [
+                    {
+                        "term": "MTBF and MTTR",
+                        "definition": "MTBF (Mean Time Between Failures): average time between system failures. MTTR (Mean Time To Repair): average time to restore service after failure. Availability = MTBF / (MTBF + MTTR). To improve availability, either increase MTBF (better hardware, redundancy) or decrease MTTR (automation, runbooks, observability). Netflix philosophy: focus on reducing MTTR rather than preventing all failures."
+                    },
+                    {
+                        "term": "Redundancy Levels",
+                        "definition": "Active redundancy: multiple components active simultaneously (RAID-1 disk mirroring, load-balanced servers). Passive redundancy: standby component activated on failure (hot standby database). No redundancy: if it fails, feature is unavailable (acceptable for non-critical features like 'Related Products' on Amazon — main purchase flow still works)."
+                    },
+                    {
+                        "term": "Chaos Engineering",
+                        "definition": "Intentionally inject failures in production to verify the system recovers correctly. Netflix's Chaos Monkey randomly terminates production EC2 instances. Chaos Kong simulates entire region outage. Latency Monkey injects network delays. WHY: proves your failover actually works, not just in theory but in practice. Finds weaknesses before real outages expose them. IMPLEMENTATION: start in staging, gradually move to production. Define 'steady state' (normal metrics), hypothesize what happens during failure, run experiment, observe if system recovers within SLO."
+                    },
+                    {
+                        "term": "Graceful Degradation",
+                        "definition": "When a component fails, the system continues with reduced functionality rather than total failure. EXAMPLE: if the recommendation engine is down, Amazon still shows the product page — just without 'Customers also bought'. If the cache is down, the system falls back to database (slower but functional). If a non-critical microservice is down, the API returns partial data with a flag indicating degraded mode. IMPLEMENTATION: circuit breakers (see ch13), fallback methods, feature flags to disable failing features."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch02.s04",
+            "title": "Consistency Models",
+            "parent_id": "ch02",
+            "order": 4,
+            "tags": [
+                "strong-consistency",
+                "eventual-consistency",
+                "causal-consistency",
+                "linearizability"
+            ],
+            "summary": "Different levels of data consistency guarantees and when to use each in distributed systems.",
+            "explanation": {
+                "overview": "When data is replicated across multiple nodes, reads from different nodes may return different values. Consistency models define what guarantees the system provides about what value a read returns.",
+                "key_concepts": [
+                    {
+                        "term": "Strong Consistency (Linearizability)",
+                        "definition": "Every read returns the most recent write, as if there's only one copy of the data. After a write completes, all subsequent reads (from any node) see the new value. HOW: all writes go through a single leader (or consensus protocol like Raft), and reads also go to the leader (or use quorum reads). COST: higher latency (must wait for consensus), lower availability (during partition, CP systems refuse requests). WHEN: financial transactions (bank balance must be accurate), inventory management (must not oversell), user authentication (password change must take effect immediately)."
+                    },
+                    {
+                        "term": "Eventual Consistency",
+                        "definition": "If no new writes occur, eventually all replicas converge to the same value. Reads may return stale data for a window of time (typically milliseconds to seconds). HOW: writes go to any node (or leader), and replicate asynchronously. Reads can go to any node. COST: you may read stale data. BENEFIT: lower latency (no waiting for replication), higher availability (works during partitions). WHEN: social media feeds (seeing a tweet 3 seconds late is fine), DNS (TTL-based propagation), CDN cache (eventually consistent with origin). IMPLEMENTATION: Dynamo-style databases (Cassandra, DynamoDB) with tunable consistency — write to W nodes, read from R nodes. If W + R > N, you get strong consistency. If not, eventual."
+                    },
+                    {
+                        "term": "Causal Consistency",
+                        "definition": "If operation A causally precedes operation B (B depends on A's result), then every node sees A before B. Unrelated operations can be seen in any order. EXAMPLE: User posts a photo (A), then comments on it (B). B causally depends on A. Every reader must see the photo before the comment. But another user's unrelated post (C) can appear in any order relative to A and B. HOW: use vector clocks or Lamport timestamps to track causal ordering. Each message carries a logical clock that recipients use to order operations. COST: more complex than eventual, less expensive than strong. Used by: MongoDB (causal consistency sessions)."
+                    },
+                    {
+                        "term": "Read-Your-Writes Consistency",
+                        "definition": "A user always sees their own writes. After you update your profile picture, you must see the new picture on refresh (even if other users temporarily see the old one). IMPLEMENTATION: route the user's reads to the same replica they wrote to (using sticky sessions or a 'recent write' flag that routes to the leader for a short window after writes)."
+                    },
+                    {
+                        "term": "Monotonic Reads",
+                        "definition": "Once a user sees a value at time T, they never see an older value on subsequent reads. Without this, a user might see their feed at 10:00 AM, refresh and see it at 9:55 AM (reading from a lagging replica), then refresh again and see 10:00 AM. IMPLEMENTATION: pin the user to a specific replica (sticky sessions) or track the user's last-seen timestamp and only serve from replicas at least as fresh."
+                    }
+                ]
+            },
+            "links": [
+                {
+                    "target_id": "ch09",
+                    "title": "CAP Theorem & Consensus",
+                    "relationship": "deep-dive"
+                }
+            ],
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Designing Data-Intensive Applications (Ch. 5-9) — Martin Kleppmann",
+            "url": "https://dataintensive.net/"
+        },
+        {
+            "title": "Google SRE Book",
+            "url": "https://sre.google/sre-book/table-of-contents/"
+        },
+        {
+            "title": "Netflix Tech Blog — Chaos Engineering",
+            "url": "https://netflixtechblog.com/tagged/chaos-engineering"
+        }
+    ]
+}

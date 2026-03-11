@@ -1,0 +1,132 @@
+{
+    "id": "ch13",
+    "title": "Resiliency, Security & Architecture Patterns",
+    "parent_id": null,
+    "order": 13,
+    "tags": [
+        "circuit-breaker",
+        "retry",
+        "bulkhead",
+        "TLS",
+        "OAuth",
+        "JWT",
+        "zero-trust",
+        "strangler-fig"
+    ],
+    "summary": "Resiliency patterns (circuit breaker 3-state machine, retry with jitter, bulkhead), security internals (TLS 1.3, JWT, OAuth 2.0), and cloud architecture patterns.",
+    "explanation": {
+        "overview": "Real production systems fail constantly. Resilient systems don't prevent all failures — they isolate them, recover quickly, and degrade gracefully. Security ensures that only authorized users can access data and that data is protected in transit and at rest. Architecture patterns provide reusable solutions for common system evolution challenges."
+    },
+    "children": [
+        {
+            "id": "ch13.s01",
+            "title": "Resiliency Patterns — Internals",
+            "parent_id": "ch13",
+            "order": 1,
+            "tags": [
+                "circuit-breaker",
+                "retry",
+                "bulkhead",
+                "timeout"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Circuit Breaker (3-State Machine)",
+                        "definition": "CLOSED (normal): requests pass through. Track failure count. When failures reach threshold (e.g., 5 failures in 60 seconds), transition to OPEN. OPEN: all requests fail immediately (fast-fail) without calling the downstream service. After a timeout period (e.g., 30 seconds), transition to HALF-OPEN. HALF-OPEN: allow ONE probe request through. If it succeeds, transition back to CLOSED (service recovered). If it fails, transition back to OPEN (still down). INTERNAL STATE: {state: CLOSED|OPEN|HALF_OPEN, failure_count: int, last_failure_time: timestamp, success_count_in_half_open: int}. CONFIGURABLE: failure_threshold (5), timeout_duration (30s), success_threshold_in_half_open (3). WHY: prevents cascading failures. If Service B is down, Service A's circuit breaker fast-fails instead of timing out on every request (saving thread pool resources and response time). TOOLS: Resilience4j (Java), Polly (.NET), Hystrix (deprecated Netflix), Envoy (built-in circuit breaking)."
+                    },
+                    {
+                        "term": "Retry with Exponential Backoff + Jitter",
+                        "definition": "On transient failure (network timeout, 503), retry after increasing delays. Formula: wait = min(cap, base × 2^attempt) + random_jitter. Example: base=100ms, cap=30s. Attempt 1: 100ms + jitter. Attempt 2: 200ms + jitter. Attempt 3: 400ms + jitter. ... Attempt 8: 25.6s + jitter. WHY JITTER: without jitter, all clients that failed at the same time retry at the same time (thundering herd retry storm). Jitter spreads retries randomly. Types: Full jitter: wait = random(0, min(cap, base × 2^attempt)). Equal jitter: wait = min(cap, base × 2^attempt)/2 + random(0, min(cap, base × 2^attempt)/2). ONLY retry on transient errors (timeout, 503, 429). NEVER retry on permanent errors (400, 404, 403)."
+                    },
+                    {
+                        "term": "Bulkhead",
+                        "definition": "Isolate resources so failure in one area doesn't affect others. Named after ship bulkhead compartments. IMPLEMENTATION: separate thread pools per downstream service. Service A gets thread pool of 20. Service B gets thread pool of 20. If Service A is slow and all 20 threads are blocked, Service B's pool is unaffected — it continues serving normally. Without bulkhead: a slow downstream blocks all shared threads, and the entire server becomes unresponsive. Envoy proxy: configurable max_connections and max_pending_requests per upstream cluster."
+                    },
+                    {
+                        "term": "Timeout with Deadline Propagation",
+                        "definition": "ALWAYS set timeouts on every external call. Without timeouts, a hung downstream service blocks your threads indefinitely. DEADLINE PROPAGATION: pass the remaining time budget downstream. If the client set a 5-second deadline and your service spent 2 seconds so far, pass 3 seconds to the downstream call. If the downstream can't complete in 3 seconds, it fast-fails. gRPC has built-in deadline propagation. For REST: pass deadline as a header (X-Request-Deadline: unix_timestamp)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch13.s02",
+            "title": "Security Internals",
+            "parent_id": "ch13",
+            "order": 2,
+            "tags": [
+                "TLS",
+                "JWT",
+                "OAuth",
+                "RBAC",
+                "encryption"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "JWT (JSON Web Token)",
+                        "definition": "Stateless authentication token: Header.Payload.Signature (base64-encoded). Header: {alg: 'RS256', typ: 'JWT'}. Payload: {user_id: 123, role: 'admin', exp: 1710456789}. Signature: HMAC-SHA256(header + '.' + payload, secret_key) or RSA signature for asymmetric. VERIFICATION: server decodes header+payload, recomputes signature with its secret/public key, compares. If match, token is valid and untampered. STATELESS: no server-side session storage needed. Server doesn't need to query a database to verify identity. EDGE CASES: JWT can't be revoked before expiry (stateless = no server-side invalidation). FIX: use short expiry (15 min) + refresh tokens (stored server-side, revocable, long-lived). Or maintain a token blacklist in Redis (defeats stateless purpose but adds revocation). Token size: JWTs can grow large (1-4 KB) — stored in every request header. Don't put unnecessary data in the payload."
+                    },
+                    {
+                        "term": "OAuth 2.0 Authorization Code Flow",
+                        "definition": "Standard for third-party authorization (Login with Google). Flow: (1) User clicks 'Login with Google' → redirect to Google's auth server with client_id + redirect_uri. (2) User authenticates on Google → Google redirects back to your app with an authorization_code. (3) Your BACKEND exchanges code + client_secret with Google's token endpoint → receives access_token + refresh_token. (4) Use access_token to call Google APIs on behalf of the user. PKCE extension (required for mobile/SPA): no client_secret. Instead, generate code_verifier (random string), send code_challenge = SHA256(code_verifier) in step 1. In step 3, send code_verifier — Google verifies it matches the challenge. Prevents authorization code interception attacks."
+                    },
+                    {
+                        "term": "Encryption at Rest & In Transit",
+                        "definition": "In Transit: TLS (HTTPS) encrypts all data between client and server. Use mTLS (mutual TLS) for service-to-service communication inside the cluster — both sides present certificates. At Rest: AES-256-GCM encryption for data stored on disk. Key management: use a KMS (AWS KMS, HashiCorp Vault) — application never handles raw encryption keys. Envelope encryption: KMS encrypts a data encryption key (DEK) → DEK encrypts the data → store encrypted DEK alongside encrypted data."
+                    },
+                    {
+                        "term": "Zero Trust Architecture",
+                        "definition": "Traditional security: trust everything inside the network perimeter (VPN). Zero Trust: never trust, always verify. Every request must be authenticated and authorized, even between internal services. Implementation: mTLS between all services (Istio service mesh), per-request authorization (check JWT + RBAC on every API call), micro-segmentation (network policies limiting which services can talk to which), short-lived credentials (rotate certificates every 24 hours)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch13.s03",
+            "title": "Cloud Architecture Patterns",
+            "parent_id": "ch13",
+            "order": 3,
+            "tags": [
+                "strangler-fig",
+                "sidecar",
+                "ambassador",
+                "anti-corruption"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Strangler Fig Pattern",
+                        "definition": "Incrementally migrate from a monolith to microservices. Place a facade (API Gateway) in front of the monolith. Gradually route endpoints from the monolith to new microservices. Old code is 'strangled' (replaced) one route at a time. At the end, the monolith is fully replaced. WHY: avoids the risk of a Big Bang rewrite. You can validate each microservice in production before moving the next endpoint. CONFIGURABLE: use feature flags or traffic splitting (route 10% of /orders to new service, 90% to monolith)."
+                    },
+                    {
+                        "term": "Sidecar Pattern",
+                        "definition": "Deploy a helper process alongside the main application container (in the same pod in Kubernetes). The sidecar handles cross-cutting concerns: logging (Fluentd sidecar ships logs), monitoring (Prometheus sider), security (Envoy sidecar handles mTLS), traffic management (Istio sidecar proxies all network traffic). The main application is unaware of the sidecar — they communicate via localhost."
+                    },
+                    {
+                        "term": "Anti-Corruption Layer",
+                        "definition": "When integrating with a legacy system or third-party API that has a different domain model, add a translation layer. Your services communicate with the ACL, which translates between your clean domain model and the legacy model. Prevents legacy concepts from leaking into your codebase."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Release It! — Michael Nygard",
+            "url": "https://www.amazon.com/Release-Design-Deploy-Production-Ready-Software/dp/1680502395"
+        },
+        {
+            "title": "Resilience4j Documentation",
+            "url": "https://resilience4j.readme.io/"
+        },
+        {
+            "title": "OAuth 2.0 RFC 6749",
+            "url": "https://datatracker.ietf.org/doc/html/rfc6749"
+        }
+    ]
+}

@@ -1,0 +1,110 @@
+{
+    "id": "ch06",
+    "title": "Indexing & Query Optimization",
+    "parent_id": null,
+    "order": 6,
+    "tags": [
+        "indexing",
+        "B-tree",
+        "hash-index",
+        "composite",
+        "query-optimization",
+        "explain"
+    ],
+    "summary": "How database indexes work internally, when to create them, composite index design, full-text search with inverted indexes, and query optimization techniques.",
+    "explanation": {
+        "overview": "An index is a data structure that speeds up data retrieval at the cost of additional storage and slower writes. Without indexes, a database performs a full table scan (O(N)) for every query. With proper indexes, lookups become O(log N) or O(1). Choosing the right indexes is arguably the single most impactful performance optimization in any system.",
+        "how_it_works_internally": "An index is a separate data structure maintained alongside the table. It maps column values to row locations (page + offset). When you query WHERE email = 'alice@example.com', the database looks up 'alice@example.com' in the index (fast), gets the row's physical location, and fetches just that row (instead of scanning all rows)."
+    },
+    "children": [
+        {
+            "id": "ch06.s01",
+            "title": "Index Types & Internals",
+            "parent_id": "ch06",
+            "order": 1,
+            "tags": [
+                "B-tree",
+                "hash-index",
+                "bitmap",
+                "GIN",
+                "GiST"
+            ],
+            "summary": "Internal data structures behind different index types and when each is optimal.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "B-Tree Index (Default)",
+                        "definition": "Balanced tree where each node holds sorted keys and pointers. Leaf nodes are linked for efficient range scans. Supports: =, <, >, <=, >=, BETWEEN, LIKE 'prefix%' (not '%suffix'). HOW IT WORKS: a B+Tree with branching factor ~500. A table with 100M rows needs ~3 levels (500^3 = 125M). Every lookup = 3 page reads (often cached in buffer pool). Leaf pages contain (key_value, row_pointer) pairs sorted by key. For a range query (WHERE age BETWEEN 20 AND 30), find the leaf page for age=20, then scan forward through linked leaf pages until age=30. WRITE OVERHEAD: every INSERT/UPDATE/DELETE must also update the index. With 5 indexes on a table, every write does 6 operations (1 table + 5 indexes). WHEN TO USE: general purpose, most columns, any comparison operator."
+                    },
+                    {
+                        "term": "Hash Index",
+                        "definition": "Hash table mapping hash(key) → row pointer. O(1) lookup for equality. Does NOT support range queries (hashed values have no order). Postgres: only for = comparisons. MySQL Memory engine supports it. Rarely explicitly created — B-Tree is usually sufficient. USE: when you ONLY do equality lookups on a high-cardinality column and never range scans."
+                    },
+                    {
+                        "term": "Composite (Multi-Column) Index",
+                        "definition": "Index on multiple columns: CREATE INDEX idx ON orders(user_id, created_at). Entries sorted by user_id first, then by created_at within each user_id. The LEFT PREFIX RULE: the index is useful for queries that match columns LEFT to right. (user_id = 5 AND created_at > '2024-01-01') → uses index. (user_id = 5) → uses index (left prefix). (created_at > '2024-01-01') → CANNOT use index (missing left column). COLUMN ORDER MATTERS: put the most selective (highest cardinality) column first, OR the column most commonly used in equality conditions. COVERING INDEX: if the index contains ALL columns referenced in the query (SELECT, WHERE, ORDER BY), the database reads only the index (index-only scan) without touching the table (heap). This avoids the random I/O of fetching rows."
+                    },
+                    {
+                        "term": "Inverted Index (Full-Text Search)",
+                        "definition": "Maps each word → list of document IDs containing that word. Used by: Elasticsearch, Lucene, Postgres tsvector. INTERNAL: text is tokenized (split into words), stemmed (running → run), lowercased, and stop words removed. Each term is stored in a sorted dictionary (B-Tree or FST — Finite State Transducer). Each dictionary entry points to a posting list (sorted array of doc IDs + positions). Query 'distributed systems': look up 'distribut' → posting list [doc3, doc7, doc15]. Look up 'system' → [doc1, doc3, doc7]. Intersect → [doc3, doc7]. Ranking: TF-IDF (term frequency × inverse document frequency) or BM25 (improved TF-IDF). Elasticsearch uses BM25 by default."
+                    },
+                    {
+                        "term": "GIN Index (Generalized Inverted Index — Postgres)",
+                        "definition": "For indexing composite values: arrays, JSON, full-text. CREATE INDEX idx ON products USING GIN (tags) — allows efficient 'contains' queries: WHERE tags @> '{electronics, sale}'. Used for: JSONB queries (WHERE metadata @> '{\"color\": \"red\"}'), array containment, trigram text search (pg_trgm for LIKE '%partial%' queries)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch06.s02",
+            "title": "Query Optimization & EXPLAIN",
+            "parent_id": "ch06",
+            "order": 2,
+            "tags": [
+                "EXPLAIN",
+                "query-plan",
+                "optimization",
+                "slow-query"
+            ],
+            "summary": "How to analyze and optimize slow queries using EXPLAIN, index strategy, and common antipatterns.",
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "EXPLAIN ANALYZE",
+                        "definition": "Shows the query execution plan + actual timing. EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 5 AND status = 'pending' ORDER BY created_at DESC LIMIT 10; Output shows: Seq Scan (full table scan — bad), Index Scan (using index — good), Index Only Scan (covering index — best), Bitmap Heap Scan (index finds many rows, fetches in batch), Nested Loop Join, Hash Join, Sort. KEY METRICS: rows (estimated vs actual), cost, actual time, buffers (shared hit = cached, shared read = from disk). If estimated rows ≫ actual rows, statistics are stale — run ANALYZE to update."
+                    },
+                    {
+                        "term": "N+1 Query Problem",
+                        "definition": "Loop that executes 1 query per item: for user in users: user.posts = db.query('SELECT * FROM posts WHERE user_id = ?', user.id). With 100 users: 1 query for users + 100 queries for posts = 101 queries. FIX: batch load — SELECT * FROM posts WHERE user_id IN (1, 2, 3, ..., 100) — 1 query. Or use a JOIN. ORMs often cause N+1 silently — use eager loading (Hibernate: @Fetch(FetchType.EAGER), Django: select_related(), SQLAlchemy: joinedload())."
+                    },
+                    {
+                        "term": "Index-Only Optimization",
+                        "definition": "If your query only accesses columns IN the index, the database reads the index alone (skipping the table heap). Example: CREATE INDEX idx ON orders(user_id, status, created_at). Query: SELECT status, created_at FROM orders WHERE user_id = 5 — all columns are in the index. Postgres calls this an 'Index Only Scan'. Can be 10-100× faster than Index Scan + heap fetch for large tables."
+                    },
+                    {
+                        "term": "Denormalization for Read Performance",
+                        "definition": "Normalization (3NF) reduces data redundancy but requires JOINs. Denormalization duplicates data to eliminate JOINs. Example: instead of JOIN users ON posts.user_id = users.id to get the username, store username directly in the posts table. TRADE-OFF: faster reads, more storage, risk of inconsistency (username changes require updates in posts too). Use for: read-heavy workloads where JOIN cost is prohibitive. Materialized views: Postgres REFRESH MATERIALIZED VIEW precomputes the JOIN result and stores it as a table."
+                    }
+                ]
+            },
+            "common_mistakes": [
+                "Creating indexes on low-cardinality columns (boolean, status with 3 values) — index doesn't help much when most rows match.",
+                "Too many indexes — each index adds write overhead. Profile your queries to identify necessary indexes.",
+                "Using SELECT * when you only need 2 columns — prevents index-only scans and wastes bandwidth.",
+                "Not using EXPLAIN — guessing is unreliable. Always EXPLAIN ANALYZE your slow queries."
+            ],
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Use The Index, Luke — Indexing in SQL",
+            "url": "https://use-the-index-luke.com/"
+        },
+        {
+            "title": "Postgres EXPLAIN Documentation",
+            "url": "https://www.postgresql.org/docs/current/sql-explain.html"
+        }
+    ]
+}

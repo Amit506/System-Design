@@ -1,0 +1,121 @@
+{
+    "id": "ch14",
+    "title": "Algorithms & Data Structures for System Design",
+    "parent_id": null,
+    "order": 14,
+    "tags": [
+        "bloom-filter",
+        "count-min-sketch",
+        "HyperLogLog",
+        "consistent-hashing",
+        "trie",
+        "quadtree",
+        "geohash"
+    ],
+    "summary": "Probabilistic data structures (Bloom filter, Count-Min Sketch, HyperLogLog), spatial data structures (Quadtree, GeoHash, R-tree), and algorithmic building blocks used in large-scale systems.",
+    "explanation": {
+        "overview": "Certain algorithmic building blocks appear repeatedly in system design. Bloom filters tell you if an element is NOT in a set (with zero false negatives). HyperLogLog counts unique elements in constant memory. Quadtrees and GeoHashes enable proximity search. Understanding these gives you powerful tools for interviews."
+    },
+    "children": [
+        {
+            "id": "ch14.s01",
+            "title": "Probabilistic Data Structures",
+            "parent_id": "ch14",
+            "order": 1,
+            "tags": [
+                "bloom-filter",
+                "count-min-sketch",
+                "HyperLogLog"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Bloom Filter",
+                        "definition": "Space-efficient probabilistic set membership test. Answers 'is X in the set?' with two possible results: DEFINITELY NOT (100% accurate) or PROBABLY YES (false positive possible). INTERNAL: a bit array of m bits (all 0 initially) + k independent hash functions. INSERT(x): compute k hashes → set bits at those k positions to 1. LOOKUP(x): compute k hashes → check if ALL k positions are 1. If any is 0, x is DEFINITELY NOT in the set. If all are 1, x is PROBABLY in the set (could be a collision). FALSE POSITIVE RATE: p ≈ (1 - e^(-kn/m))^k. For 1% false positive rate with 1M elements: m ≈ 9.6M bits (1.2 MB), k ≈ 7 hash functions. CANNOT DELETE elements (setting a bit to 0 affects other elements that hash to the same bit). FIX: Counting Bloom Filter (each position is a counter instead of a bit — increment on insert, decrement on delete). USE CASES: (1) Chrome Safe Browsing: checks URLs against a Bloom filter of known malicious URLs before querying the server. (2) Cassandra/HBase: checks if an SSTable might contain a key before reading from disk. (3) Spell checkers: check if a word is NOT in the dictionary. (4) Weak password check: check if password is in the list of compromised passwords."
+                    },
+                    {
+                        "term": "Count-Min Sketch",
+                        "definition": "Probabilistic frequency counter. Estimates how many times an element has been seen. Uses a 2D array (d rows × w columns) + d hash functions. INCREMENT(x): for each hash function i, increment array[i][hash_i(x) % w]. ESTIMATE(x): return min(array[i][hash_i(x) % w]) for all i. Always OVERESTIMATES (never underestimates). Accuracy improves with larger d and w. USE: (1) Network traffic frequency estimation (count packets per IP). (2) Top-K heavy hitters (find most frequent search queries). (3) Live stream analytics (approximate word counts)."
+                    },
+                    {
+                        "term": "HyperLogLog (HLL)",
+                        "definition": "Estimates cardinality (count of distinct elements) in O(1) memory. Counting unique visitors to a website: with a set, you'd need memory proportional to the number of unique visitors. HLL uses ~12 KB of memory to count up to billions of unique elements with < 1% error. INTERNAL: hash each element → look at the binary representation → count the position of the first 1 bit (leading zeros). The intuition: seeing many leading zeros is increasingly rare. If the maximum leading zeros seen is 10, there are approximately 2^10 = 1024 unique elements. To reduce variance, split the hash into m buckets (registers), compute per-bucket estimates, and take the harmonic mean. Redis: PFADD, PFCOUNT, PFMERGE (merge multiple HLLs = union of sets). USE CASES: (1) Unique visitor counting (Redis HLL). (2) Google BigQuery approximate_count_distinct(). (3) Network monitoring (unique IP counts)."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch14.s02",
+            "title": "Spatial Data Structures",
+            "parent_id": "ch14",
+            "order": 2,
+            "tags": [
+                "quadtree",
+                "geohash",
+                "R-tree",
+                "proximity-search"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "GeoHash",
+                        "definition": "Encode a (latitude, longitude) pair into a string by alternating bit representation of latitude and longitude ranges, then base32 encoding. 'dpz83' represents a rectangular area. Longer strings = smaller area = more precision. 4 characters ≈ 40×20 km. 6 characters ≈ 600×600 m. 8 characters ≈ 20×20 m. KEY PROPERTY: geohashes with a common prefix are geographically close. So proximity search = prefix match query (efficient with B-Tree index). EDGE CASE: boundary problem — two nearby points on opposite sides of a boundary have entirely different geohashes. FIX: search the 8 neighboring geohash cells too. USED BY: Elasticsearch geo_point, Redis GEOADD (uses sorted set with geohash as score)."
+                    },
+                    {
+                        "term": "Quadtree",
+                        "definition": "Recursively divide a 2D space into 4 quadrants. Each node has 4 children (NW, NE, SW, SE). A leaf node contains up to K points. When a leaf exceeds K, split into 4 children and redistribute points. SEARCH (find points within a rectangle): start at root, for each child check if the child's bounding box intersects the search rectangle, recursively search intersecting children. TIME: O(log N) for well-distributed points. USED BY: Uber for finding nearby drivers. Yelp for nearby restaurants. Game engines for spatial indexing. CONFIGURABLE: max depth, max points per leaf, dynamic rebalancing."
+                    },
+                    {
+                        "term": "R-Tree",
+                        "definition": "Similar to B-Tree but for multi-dimensional data. Each node contains a bounding rectangle that encompasses all its children. Used by PostGIS (Postgres spatial extension) for spatial queries. Supports: point-in-polygon, nearest-neighbor, range queries. More general than Quadtree — works with arbitrary rectangles and polygons, not just points."
+                    }
+                ]
+            },
+            "children": []
+        },
+        {
+            "id": "ch14.s03",
+            "title": "Other Essential Algorithms",
+            "parent_id": "ch14",
+            "order": 3,
+            "tags": [
+                "leader-election",
+                "merkle-tree",
+                "trie",
+                "skip-list"
+            ],
+            "explanation": {
+                "key_concepts": [
+                    {
+                        "term": "Merkle Tree",
+                        "definition": "Binary tree of hashes. Leaf nodes = hash(data chunk). Parent nodes = hash(left_child + right_child). Root hash summarizes ALL data. If any chunk changes, the root hash changes. COMPARISON: to find which chunks differ between two replicas: compare root hashes. If different, compare children recursively. Only need to exchange O(log N) hashes to find the differing chunk. USED BY: Cassandra (anti-entropy repair — find inconsistent data between replicas), Git (each commit is a Merkle tree of files), BitTorrent (verify downloaded pieces), Bitcoin (Merkle root in block header)."
+                    },
+                    {
+                        "term": "Trie (Prefix Tree)",
+                        "definition": "Tree where each edge represents a character. A path from root to a node represents a prefix. Each node stores whether it marks the end of a complete word/key. LOOKUP/INSERT: O(L) where L = key length (independent of N, number of keys). USE CASES: autocomplete (traverse to the prefix node, DFS to find all completions), IP routing (longest prefix matching), spell checking, phone contact search. COMPRESSED TRIE (Radix Tree): merge single-child chains. Reduces height and memory. Used by Linux kernel for routing tables."
+                    },
+                    {
+                        "term": "Skip List",
+                        "definition": "Probabilistic sorted linked list with multiple levels. Bottom level = complete sorted list. Each higher level is a random subset (each element promoted with probability 1/2). SEARCH: start at top level, move right until next element > target, drop down a level, repeat. Average O(log N). INSERT: insert in bottom level, flip a coin to decide promotion to each higher level. WHY: achieves O(log N) search/insert like a balanced tree but much simpler to implement, especially for concurrent access (no tree rotations). USED BY: Redis sorted sets (ZSET), LevelDB/RocksDB memtable."
+                    }
+                ]
+            },
+            "children": []
+        }
+    ],
+    "references": [
+        {
+            "title": "Probabilistic Data Structures — Redis University",
+            "url": "https://university.redis.com/courses/ru202/"
+        },
+        {
+            "title": "Bloom Filters by Example",
+            "url": "https://llimllib.github.io/bloomfilter-tutorial/"
+        },
+        {
+            "title": "GeoHash Visualization",
+            "url": "http://geohash.org/"
+        }
+    ]
+}
