@@ -1,0 +1,11 @@
+{
+    "id": "ch18",
+    "title": "Security",
+    "tags": [
+        "security"
+    ],
+    "summary": "System Design Security Fundamentals",
+    "explanation": {
+        "overview": "\n\n<!-- PRIMER CONTENT -->\n\n## Security\n\nThis section could use some updates.  Consider [contributing](#contributing)!\n\nSecurity is a broad topic.  Unless you have considerable experience, a security background, or are applying for a position that requires knowledge of security, you probably won't need to know more than the basics:\n\n* Encrypt in transit and at rest.\n* Sanitize all user inputs or any input parameters exposed to user to prevent [XSS](https://en.wikipedia.org/wiki/Cross-site_scripting) and [SQL injection](https://en.wikipedia.org/wiki/SQL_injection).\n* Use parameterized queries to prevent SQL injection.\n* Use the principle of [least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege).\n\n### Source(s) and further reading\n\n* [API security checklist](https://github.com/shieldfy/API-Security-Checklist)\n* [Security guide for developers](https://github.com/FallibleInc/security-guide-for-developers)\n* [OWASP top ten](https://www.owasp.org/index.php/OWASP_Top_Ten_Cheat_Sheet)\n\n"
+    }
+}

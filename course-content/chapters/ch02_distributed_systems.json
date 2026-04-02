@@ -10,9 +10,9 @@
         "reliability",
         "consistency"
     ],
-    "summary": "The fundamental properties that define distributed systems — scalability, availability, reliability, consistency, and the trade-offs between them.",
+    "summary": "The fundamental properties that define distributed systems \u2014 scalability, availability, reliability, consistency, and the trade-offs between them.",
     "explanation": {
-        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions — every architecture is a set of trade-offs among these properties. DEVELOPER BLOG INSIGHT: 'Jumping from monolithic to distributed systems is like jumping from an acoustic guitar to a full symphony orchestra in a hurricane.'",
+        "overview": "A distributed system is a collection of independent computers that appear to users as a single coherent system. Every large-scale application (Google, Netflix, Amazon) is a distributed system. Understanding the key characteristics helps you make informed design decisions \u2014 every architecture is a set of trade-offs among these properties. DEVELOPER BLOG INSIGHT: 'Jumping from monolithic to distributed systems is like jumping from an acoustic guitar to a full symphony orchestra in a hurricane.'\n\n<!-- PRIMER CONTENT -->\n\n## Performance vs scalability\n\nA service is **scalable** if it results in increased **performance** in a manner proportional to resources added. Generally, increasing performance means serving more units of work, but it can also be to handle larger units of work, such as when datasets grow.<sup><a href=http://www.allthingsdistributed.com/2006/03/a_word_on_scalability.html>1</a></sup>\n\nAnother way to look at performance vs scalability:\n\n* If you have a **performance** problem, your system is slow for a single user.\n* If you have a **scalability** problem, your system is fast for a single user but slow under heavy load.\n\n### Source(s) and further reading\n\n* [A word on scalability](http://www.allthingsdistributed.com/2006/03/a_word_on_scalability.html)\n* [Scalability, availability, stability, patterns](http://www.slideshare.net/jboner/scalability-availability-stability-patterns/)\n\n\n## Latency vs throughput\n\n**Latency** is the time to perform some action or to produce some result.\n\n**Throughput** is the number of such actions or results per unit of time.\n\nGenerally, you should aim for **maximal throughput** with **acceptable latency**.\n\n### Source(s) and further reading\n\n* [Understanding latency vs throughput](https://community.cadence.com/cadence_blogs_8/b/fv/posts/understanding-latency-vs-throughput)\n\n",
         "how_it_works_internally": "Distributed systems face challenges that monolithic systems don't: network is unreliable (packets drop, latency spikes), clocks are unsynchronized (each machine has slightly different time), nodes fail independently (one server crashes while others continue), and there's no shared memory (data must be explicitly communicated). These realities force you to make design trade-offs at every layer."
     },
     "limitations": [
@@ -38,11 +38,11 @@
             ],
             "summary": "The ability of a system to handle increasing load by adding resources.",
             "explanation": {
-                "overview": "Scalability is the system's capacity to cope with increased demand. A scalable system maintains performance (latency, throughput) as load grows — more users, more data, more requests.",
+                "overview": "Scalability is the system's capacity to cope with increased demand. A scalable system maintains performance (latency, throughput) as load grows \u2014 more users, more data, more requests.",
                 "key_concepts": [
                     {
                         "term": "Vertical Scaling (Scale Up)",
-                        "definition": "INTERNAL: Add more resources to a single machine — more CPU, RAM, SSD, faster network. EXAMPLE: upgrade from 16 GB RAM to 128 GB, or 4-core to 64-core CPU. PROS: simple (no code changes), no distributed system complexity, data consistency is easy (single machine). CONS: hardware limits (you can't buy a machine with 100 TB RAM), cost grows exponentially (a 64-core server costs more than 16× a 4-core), single point of failure (if this machine dies, everything dies). INDUSTRY USE: databases often scale vertically first — a beefier Postgres server can handle a lot more before you need sharding. Amazon RDS instances go up to 24 TB RAM and 128 vCPUs."
+                        "definition": "INTERNAL: Add more resources to a single machine \u2014 more CPU, RAM, SSD, faster network. EXAMPLE: upgrade from 16 GB RAM to 128 GB, or 4-core to 64-core CPU. PROS: simple (no code changes), no distributed system complexity, data consistency is easy (single machine). CONS: hardware limits (you can't buy a machine with 100 TB RAM), cost grows exponentially (a 64-core server costs more than 16\u00d7 a 4-core), single point of failure (if this machine dies, everything dies). INDUSTRY USE: databases often scale vertically first \u2014 a beefier Postgres server can handle a lot more before you need sharding. Amazon RDS instances go up to 24 TB RAM and 128 vCPUs."
                     },
                     {
                         "term": "Horizontal Scaling (Scale Out)",
@@ -50,7 +50,7 @@
                     },
                     {
                         "term": "Elasticity",
-                        "definition": "The ability to automatically add or remove resources based on current demand. Cloud auto-scaling: AWS Auto Scaling Groups monitor CPU/memory metrics and add/remove EC2 instances. Kubernetes HPA (Horizontal Pod Autoscaler) adjusts pod count based on CPU or custom metrics. CONFIGURABLE: min instances (floor — always running), max instances (ceiling — cost control), scaling metric (CPU > 70%, QPS > 1000, queue depth > 100), cooldown period (wait 300s after scaling before evaluating again, prevents oscillation). EDGE CASE: cold start — new instances take time to boot, load code, warm caches. During traffic spikes, there's a lag between the spike and the new capacity. FIX: keep a buffer of warm standby instances, or use provisioned capacity."
+                        "definition": "The ability to automatically add or remove resources based on current demand. Cloud auto-scaling: AWS Auto Scaling Groups monitor CPU/memory metrics and add/remove EC2 instances. Kubernetes HPA (Horizontal Pod Autoscaler) adjusts pod count based on CPU or custom metrics. CONFIGURABLE: min instances (floor \u2014 always running), max instances (ceiling \u2014 cost control), scaling metric (CPU > 70%, QPS > 1000, queue depth > 100), cooldown period (wait 300s after scaling before evaluating again, prevents oscillation). EDGE CASE: cold start \u2014 new instances take time to boot, load code, warm caches. During traffic spikes, there's a lag between the spike and the new capacity. FIX: keep a buffer of warm standby instances, or use provisioned capacity."
                     }
                 ],
                 "examples": [
@@ -96,11 +96,11 @@
                 "key_concepts": [
                     {
                         "term": "SLA vs SLO vs SLI",
-                        "definition": "SLI (Service Level Indicator): the actual measurement (e.g., request success rate = 99.95% this month). SLO (Service Level Objective): the target (e.g., 'availability must be ≥ 99.9%'). SLA (Service Level Agreement): the contract with customers (e.g., 'if availability drops below 99.9%, customer gets service credits'). Google's SRE book: alert when burning through your error budget too fast, not on individual incidents."
+                        "definition": "SLI (Service Level Indicator): the actual measurement (e.g., request success rate = 99.95% this month). SLO (Service Level Objective): the target (e.g., 'availability must be \u2265 99.9%'). SLA (Service Level Agreement): the contract with customers (e.g., 'if availability drops below 99.9%, customer gets service credits'). Google's SRE book: alert when burning through your error budget too fast, not on individual incidents."
                     },
                     {
                         "term": "Availability in Series vs Parallel",
-                        "definition": "Components in series (sequential dependency): overall = A1 × A2 × A3. If each is 99.9%, overall = 99.7%. Components in parallel (redundant): overall = 1 - (1-A1)(1-A2). Two 99.9% components in parallel = 1 - 0.001² = 99.9999%. IMPLICATION: minimize sequential dependencies (reduce the critical path). Add redundancy (parallel components) for each critical component."
+                        "definition": "Components in series (sequential dependency): overall = A1 \u00d7 A2 \u00d7 A3. If each is 99.9%, overall = 99.7%. Components in parallel (redundant): overall = 1 - (1-A1)(1-A2). Two 99.9% components in parallel = 1 - 0.001\u00b2 = 99.9999%. IMPLICATION: minimize sequential dependencies (reduce the critical path). Add redundancy (parallel components) for each critical component."
                     },
                     {
                         "term": "Failover Strategies",
@@ -131,7 +131,7 @@
             ],
             "summary": "The ability of a system to continue functioning correctly even when components fail.",
             "explanation": {
-                "overview": "Reliability means the system performs its intended function correctly under stated conditions for a specified period. Fault tolerance is a subset — continuing to operate (possibly at degraded capacity) when components fail. The key insight: failures are inevitable at scale. With 10,000 servers, several fail every day. A reliable system is designed EXPECTING failure.",
+                "overview": "Reliability means the system performs its intended function correctly under stated conditions for a specified period. Fault tolerance is a subset \u2014 continuing to operate (possibly at degraded capacity) when components fail. The key insight: failures are inevitable at scale. With 10,000 servers, several fail every day. A reliable system is designed EXPECTING failure.",
                 "key_concepts": [
                     {
                         "term": "MTBF and MTTR",
@@ -139,7 +139,7 @@
                     },
                     {
                         "term": "Redundancy Levels",
-                        "definition": "Active redundancy: multiple components active simultaneously (RAID-1 disk mirroring, load-balanced servers). Passive redundancy: standby component activated on failure (hot standby database). No redundancy: if it fails, feature is unavailable (acceptable for non-critical features like 'Related Products' on Amazon — main purchase flow still works)."
+                        "definition": "Active redundancy: multiple components active simultaneously (RAID-1 disk mirroring, load-balanced servers). Passive redundancy: standby component activated on failure (hot standby database). No redundancy: if it fails, feature is unavailable (acceptable for non-critical features like 'Related Products' on Amazon \u2014 main purchase flow still works)."
                     },
                     {
                         "term": "Chaos Engineering",
@@ -147,7 +147,7 @@
                     },
                     {
                         "term": "Graceful Degradation",
-                        "definition": "When a component fails, the system continues with reduced functionality rather than total failure. EXAMPLE: if the recommendation engine is down, Amazon still shows the product page — just without 'Customers also bought'. If the cache is down, the system falls back to database (slower but functional). If a non-critical microservice is down, the API returns partial data with a flag indicating degraded mode. IMPLEMENTATION: circuit breakers (see ch13), fallback methods, feature flags to disable failing features."
+                        "definition": "When a component fails, the system continues with reduced functionality rather than total failure. EXAMPLE: if the recommendation engine is down, Amazon still shows the product page \u2014 just without 'Customers also bought'. If the cache is down, the system falls back to database (slower but functional). If a non-critical microservice is down, the API returns partial data with a flag indicating degraded mode. IMPLEMENTATION: circuit breakers (see ch13), fallback methods, feature flags to disable failing features."
                     }
                 ],
                 "examples": [
@@ -181,7 +181,7 @@
                     },
                     {
                         "term": "Eventual Consistency",
-                        "definition": "If no new writes occur, eventually all replicas converge to the same value. Reads may return stale data for a window of time (typically milliseconds to seconds). HOW: writes go to any node (or leader), and replicate asynchronously. Reads can go to any node. COST: you may read stale data. BENEFIT: lower latency (no waiting for replication), higher availability (works during partitions). WHEN: social media feeds (seeing a tweet 3 seconds late is fine), DNS (TTL-based propagation), CDN cache (eventually consistent with origin). IMPLEMENTATION: Dynamo-style databases (Cassandra, DynamoDB) with tunable consistency — write to W nodes, read from R nodes. If W + R > N, you get strong consistency. If not, eventual."
+                        "definition": "If no new writes occur, eventually all replicas converge to the same value. Reads may return stale data for a window of time (typically milliseconds to seconds). HOW: writes go to any node (or leader), and replicate asynchronously. Reads can go to any node. COST: you may read stale data. BENEFIT: lower latency (no waiting for replication), higher availability (works during partitions). WHEN: social media feeds (seeing a tweet 3 seconds late is fine), DNS (TTL-based propagation), CDN cache (eventually consistent with origin). IMPLEMENTATION: Dynamo-style databases (Cassandra, DynamoDB) with tunable consistency \u2014 write to W nodes, read from R nodes. If W + R > N, you get strong consistency. If not, eventual."
                     },
                     {
                         "term": "Causal Consistency",
@@ -263,7 +263,7 @@
     ],
     "references": [
         {
-            "title": "Designing Data-Intensive Applications (Ch. 5-9) — Martin Kleppmann",
+            "title": "Designing Data-Intensive Applications (Ch. 5-9) \u2014 Martin Kleppmann",
             "url": "https://dataintensive.net/"
         },
         {
@@ -271,7 +271,7 @@
             "url": "https://sre.google/sre-book/table-of-contents/"
         },
         {
-            "title": "Netflix Tech Blog — Chaos Engineering",
+            "title": "Netflix Tech Blog \u2014 Chaos Engineering",
             "url": "https://netflixtechblog.com/tagged/chaos-engineering"
         }
     ],

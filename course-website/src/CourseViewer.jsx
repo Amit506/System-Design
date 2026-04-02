@@ -1,6 +1,8 @@
 import React from 'react';
-import { Layers, Lightbulb, GitMerge, AlertTriangle, CheckCircle, Target, Database, FileText, XOctagon } from 'lucide-react';
+import { Layers, Lightbulb, GitMerge, AlertTriangle, CheckCircle, Target, Database, FileText, XOctagon, BookOpen } from 'lucide-react';
 import MermaidRenderer from './MermaidRenderer';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 function SectionCard({ title, icon: Icon, children, className = '' }) {
     return (
@@ -51,7 +53,11 @@ export default function CourseViewer({ activeDoc }) {
                 <div className="json-content mt-8 stagger-fade-in">
                     {explanation?.overview && (
                         <div className="overview-section glass-panel p-6 rounded-xl mb-8 border-gold-subtle">
-                            <p className="text-lg leading-relaxed">{explanation.overview}</p>
+                            <div className="markdown-body prose prose-invert max-w-none text-lg leading-relaxed">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {explanation.overview}
+                                </ReactMarkdown>
+                            </div>
                         </div>
                     )}
 
